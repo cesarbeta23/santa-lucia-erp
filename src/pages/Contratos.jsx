@@ -66,18 +66,7 @@ Responde SOLO con JSON válido sin texto adicional:
     { type: 'text', text: prompt }
   ]
 
-  // Usar proxy local para evitar CORS (node server.js)
-  const response = await fetch('http://localhost:3001/api/claude', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 4000,
-      messages: [{ role: 'user', content }]
-    })
-  })
-
-  const data = await response.json()
+  const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 4000, messages: [{ role: 'user', content }] })
   if (!data.content?.[0]?.text) throw new Error('Sin respuesta de la IA')
 
   const raw = data.content[0].text.trim()
