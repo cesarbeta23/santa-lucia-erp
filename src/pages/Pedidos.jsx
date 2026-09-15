@@ -1,3 +1,4 @@
+import { callClaude } from '../lib/api.js'
 import { useState, useRef } from 'react'
 import { C, Btn, Inp, Sel, Txt, Modal, Badge, Empty, SectionHeader, card, fmt, fmtDate, Progress } from '../components/UI.jsx'
 import { supabase } from '../lib/supabase.js'
@@ -61,12 +62,7 @@ Responde SOLO con JSON válido sin texto adicional:
     { type: 'text', text: prompt }
   ]
 
-  const response = await fetch('http://localhost:3001/api/claude', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 2000, messages: [{ role: 'user', content }] })
-  })
-  const data = await response.json()
+  const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 2000, messages: [{ role: 'user', content }] })
   if (!data.content?.[0]?.text) throw new Error('Sin respuesta')
   const raw = data.content[0].text.trim()
   const ini = raw.indexOf('{'); let niv = 0, fin = ini
