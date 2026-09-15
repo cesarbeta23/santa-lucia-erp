@@ -551,8 +551,22 @@ export default function Facturacion({ dbData, setDbData, toast, user }) {
   }
 
   // ── Vista lista ───────────────────────────────────────────
-  const totalFacturadoGlobal = actas_facturacion.reduce((s, a) => s + (Number(a.total) || 0), 0)
-  const totalContratosGlobal = contratos.reduce((s, c) => s + (Number(c.valor_total) || 0), 0)
+  const statsPorTipo = ['suministro', 'instalacion', 'todo_costo'].map(tipo => {
+    const csTipo = contratos.filter(c => c.tipo === tipo)
+    const total = csTipo.reduce((s, c) => s + (Number(c.valor_total) || 0), 0)
+    const facturado = csTipo.reduce((s, c) => s + totalFacturadoContrato(c.id), 0)
+    return { tipo, total, facturado, porFact: total - facturado, nContratos: csTipo.length }
+  }).filter(s => s.nContratos > 0)
+
+  const totalGlobal    = statsPorTipo.reduce((s, x) => s + x.total, 0)
+  const factGlobal     = statsPorTipo.reduce((s, x) => s + x.facturado, 0)
+  const porFactGlobal  = totalGlobal - factGlobal
+
+  const tipoConfig = {
+    suministro:  { label: 'Suministro',  icon: '📦', color: C.bl  },
+    instalacion: { label: 'Instalación', icon: '🔧', color: C.am  },
+    todo_costo:  { label: 'Todo Costo',  icon: '📋', color: C.or  },
+  }
 
   return (
     <div>
@@ -561,24 +575,56 @@ export default function Facturacion({ dbData, setDbData, toast, user }) {
       </SectionHeader>
 
       {/* Stats globales */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 16 }}>
         <div style={{ ...card, padding: '12px 16px' }}>
           <div style={{ fontSize: 11, color: C.g4, marginBottom: 4 }}>Total contratos</div>
-          <div style={{ fontSize: 18, fontWeight: 700 }}>{fmt(totalContratosGlobal)}</div>
+          <div style={{ fontSize: 20, fontWeight: 800 }}>{fmt(totalGlobal)}</div>
         </div>
         <div style={{ ...card, padding: '12px 16px' }}>
           <div style={{ fontSize: 11, color: C.g4, marginBottom: 4 }}>Total facturado</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: C.gnD }}>{fmt(totalFacturadoGlobal)}</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: C.gnD }}>{fmt(factGlobal)}</div>
+          <div style={{ fontSize: 11, color: C.g5 }}>{totalGlobal > 0 ? Math.round(factGlobal/totalGlobal*100) : 0}% del total</div>
         </div>
         <div style={{ ...card, padding: '12px 16px' }}>
           <div style={{ fontSize: 11, color: C.g4, marginBottom: 4 }}>Por facturar</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: C.am }}>{fmt(totalContratosGlobal - totalFacturadoGlobal)}</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: C.am }}>{fmt(porFactGlobal)}</div>
+          <div style={{ fontSize: 11, color: C.g5 }}>{actas_facturacion.length} actas · {actas_facturacion.filter(a => a.estado === 'pagada').length} pagadas</div>
         </div>
-        <div style={{ ...card, padding: '12px 16px' }}>
-          <div style={{ fontSize: 11, color: C.g4, marginBottom: 4 }}>Actas registradas</div>
-          <div style={{ fontSize: 18, fontWeight: 700 }}>{actas_facturacion.length}</div>
-          <div style={{ fontSize: 11, color: C.gnD }}>{actas_facturacion.filter(a => a.estado === 'pagada').length} pagadas</div>
-        </div>
+      </div>
+
+      {/* Stats por tipo de contrato */}
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${statsPorTipo.length}, 1fr)`, gap: 12, marginBottom: 20 }}>
+        {statsPorTipo.map(s => {
+          const cfg = tipoConfig[s.tipo]
+          const pct = s.total > 0 ? Math.round(s.facturado / s.total * 100) : 0
+          return (
+            <div key={s.tipo} style={{ ...card, padding: '14px 16px', borderTop: `3px solid ${cfg.color}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <span style={{ fontSize: 16 }}>{cfg.icon}</span>
+                <span style={{ fontWeight: 700, fontSize: 13 }}>{cfg.label}</span>
+                <span style={{ fontSize: 11, color: C.g4, marginLeft: 'auto' }}>{s.nContratos} contrato(s)</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+                <div>
+                  <div style={{ fontSize: 10, color: C.g4, marginBottom: 2 }}>CONTRATO</div>
+                  <div style={{ fontSize: 14, fontWeight: 700 }}>{fmt(s.total)}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: C.g4, marginBottom: 2 }}>FACTURADO</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: C.gnD }}>{fmt(s.facturado)}</div>
+                </div>
+                <div style={{ gridColumn: '1/-1' }}>
+                  <div style={{ fontSize: 10, color: C.g4, marginBottom: 2 }}>POR FACTURAR</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: C.am }}>{fmt(s.porFact)}</div>
+                </div>
+              </div>
+              <div style={{ height: 6, background: C.g1, borderRadius: 10, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${pct}%`, background: cfg.color, borderRadius: 10, transition: 'width .4s' }} />
+              </div>
+              <div style={{ fontSize: 11, color: C.g5, marginTop: 4, textAlign: 'right' }}>{pct}% facturado</div>
+            </div>
+          )
+        })}
       </div>
 
       {/* Filtros */}
