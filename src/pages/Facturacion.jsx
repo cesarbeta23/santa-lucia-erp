@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase.js'
 
 const emptyActa = {
   contrato_id: '', numero_acta: '', fecha: '',
-  estado: 'pendiente', numero_factura: '', fecha_pago: '', notas: ''
+  estado: 'pendiente', numero_factura: '', fecha_pago: null, notas: ''
 }
 
 const ESTADOS_ACTA = {
@@ -146,14 +146,15 @@ export default function Facturacion({ dbData, setDbData, toast, user }) {
   async function guardarActa() {
     if (!form.contrato_id) { toast('Selecciona el contrato', 'err'); return }
     if (!form.fecha)       { toast('Ingresa la fecha', 'err'); return }
+    const dataGuardar = { ...form, fecha_pago: form.fecha_pago || null, numero_factura: form.numero_factura || null }
     try {
       if (editId) {
-        const { data: u, error } = await supabase.from('actas_facturacion').update(form).eq('id', editId).select().single()
+        const { data: u, error } = await supabase.from('actas_facturacion').update(dataGuardar).eq('id', editId).select().single()
         if (error) throw error
         setDbData(d => ({ ...d, actas_facturacion: d.actas_facturacion.map(a => a.id === editId ? u : a) }))
         toast('Acta actualizada', 'ok'); setModalActa(false)
       } else {
-        const { data: cr, error } = await supabase.from('actas_facturacion').insert(form).select().single()
+        const { data: cr, error } = await supabase.from('actas_facturacion').insert(dataGuardar).select().single()
         if (error) throw error
         setDbData(d => ({ ...d, actas_facturacion: [...d.actas_facturacion, cr] }))
         toast('Acta creada', 'ok'); setModalActa(false)
