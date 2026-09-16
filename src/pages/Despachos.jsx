@@ -21,6 +21,7 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
   const [remSel, setRemSel]           = useState(null)
   const [modalRem, setModalRem]       = useState(false)
   const [modalControl, setModalControl] = useState(false)
+  const [remExpandida, setRemExpandida]   = useState(null)
   const [formRem, setFormRem]         = useState({ numero: '', fecha: '', transportador: '', notas: '' })
   const [editRemId, setEditRemId]     = useState(null)
   const [cantidades, setCantidades]   = useState({})   // { item_contrato_id: cantidad }
@@ -451,48 +452,129 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
                         </thead>
                         <tbody>
                           {remisContr.map(rem => {
-                            const itsRem  = items_remision.filter(i => i.remision_id === rem.id)
-                            const itsCtrl = items_control_despacho.filter(i => i.remision_id === rem.id)
+                            const itsRem   = items_remision.filter(i => i.remision_id === rem.id)
+                            const itsCtrl  = items_control_despacho.filter(i => i.remision_id === rem.id)
                             const totalRem = itsRem.reduce((s, i) => s + Number(i.cantidad || 0), 0)
+                            const abierta  = remExpandida === rem.id
                             return (
-                              <tr key={rem.id} style={{ borderBottom: `1px solid ${C.g1}` }}
-                                onMouseEnter={e => e.currentTarget.style.background = C.g0}
-                                onMouseLeave={e => e.currentTarget.style.background = ''}
-                              >
-                                <td style={{ padding: '10px 12px' }}>
-                                  <span style={{ fontWeight: 700, color: C.or }}>REM {rem.numero}</span>
-                                  {rem.notas && <div style={{ fontSize: 11, color: C.g4, marginTop: 2 }}>{rem.notas}</div>}
-                                </td>
-                                <td style={{ padding: '10px 12px', color: C.g5, whiteSpace: 'nowrap' }}>📅 {fmtDate(rem.fecha)}</td>
-                                <td style={{ padding: '10px 12px', color: C.g5 }}>{rem.transportador || '—'}</td>
-                                <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'center' }}>
-                                    {itsRem.map(ir => {
-                                      const ic = items_contrato.find(x => x.id === ir.item_contrato_id)
-                                      return ic ? (
-                                        <span key={ir.id} style={{ background: C.orL, border: `1px solid ${C.orM}`, borderRadius: 4, padding: '2px 7px', fontSize: 11, fontWeight: 600, color: C.orD }}>
-                                          {ic.ref} {Number(ir.cantidad).toLocaleString('es-CO')}
-                                        </span>
-                                      ) : null
-                                    })}
-                                  </div>
-                                </td>
-                                <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700 }}>{totalRem.toLocaleString('es-CO')}</td>
-                                <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                                  {itsCtrl.length > 0 ? (
-                                    <span style={{ background: C.amL, border: `1px solid #FDE68A`, borderRadius: 4, padding: '2px 8px', fontSize: 11, color: '#B45309' }}>
-                                      {itsCtrl.length} ítem(s)
-                                    </span>
-                                  ) : <span style={{ color: C.g3 }}>—</span>}
-                                </td>
-                                <td style={{ padding: '10px 12px' }}>
-                                  <div style={{ display: 'flex', gap: 5 }}>
-                                    <Btn size="sm" onClick={() => { setRemSel(rem); setItemsControl([{ descripcion: '', unidad: 'und', cantidad: '' }]); setModalControl(true) }}>+ Control</Btn>
-                                    <Btn size="sm" onClick={() => abrirEditarRemision(rem)}>Editar</Btn>
-                                    <Btn size="sm" variant="danger" onClick={() => eliminarRemision(rem.id)}>Eliminar</Btn>
-                                  </div>
-                                </td>
-                              </tr>
+                              <>
+                                <tr key={rem.id}
+                                  onClick={() => setRemExpandida(abierta ? null : rem.id)}
+                                  style={{ borderBottom: abierta ? 'none' : `1px solid ${C.g1}`, cursor: 'pointer', background: abierta ? '#F0F7FF' : '' }}
+                                  onMouseEnter={e => !abierta && (e.currentTarget.style.background = C.g0)}
+                                  onMouseLeave={e => !abierta && (e.currentTarget.style.background = '')}
+                                >
+                                  <td style={{ padding: '10px 12px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                      <span style={{ color: C.g4, fontSize: 11, transition: 'transform .2s', display: 'inline-block', transform: abierta ? 'rotate(90deg)' : 'rotate(0)' }}>▶</span>
+                                      <span style={{ fontWeight: 700, color: C.or }}>REM {rem.numero}</span>
+                                    </div>
+                                    {rem.notas && !abierta && <div style={{ fontSize: 10, color: C.g4, marginTop: 2, marginLeft: 20 }}>{rem.notas}</div>}
+                                  </td>
+                                  <td style={{ padding: '10px 12px', color: C.g5, whiteSpace: 'nowrap' }}>📅 {fmtDate(rem.fecha)}</td>
+                                  <td style={{ padding: '10px 12px', color: C.g5 }}>{rem.transportador || '—'}</td>
+                                  <td style={{ padding: '10px 12px', textAlign: 'center', color: C.g5, fontSize: 12 }}>
+                                    {itsRem.length} ítem(s)
+                                  </td>
+                                  <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700 }}>{totalRem.toLocaleString('es-CO')}</td>
+                                  <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                                    {itsCtrl.length > 0 ? (
+                                      <span style={{ background: C.amL, border: `1px solid #FDE68A`, borderRadius: 4, padding: '2px 8px', fontSize: 11, color: '#B45309' }}>
+                                        {itsCtrl.length} ctrl
+                                      </span>
+                                    ) : <span style={{ color: C.g3 }}>—</span>}
+                                  </td>
+                                  <td style={{ padding: '10px 12px' }} onClick={e => e.stopPropagation()}>
+                                    <div style={{ display: 'flex', gap: 5 }}>
+                                      <Btn size="sm" onClick={() => { setRemSel(rem); setItemsControl([{ descripcion: '', unidad: 'und', cantidad: '' }]); setModalControl(true) }}>+ Control</Btn>
+                                      <Btn size="sm" onClick={() => abrirEditarRemision(rem)}>Editar</Btn>
+                                      <Btn size="sm" variant="danger" onClick={() => eliminarRemision(rem.id)}>Eliminar</Btn>
+                                    </div>
+                                  </td>
+                                </tr>
+
+                                {/* Acordeón — detalle de la remisión */}
+                                {abierta && (
+                                  <tr key={rem.id + '-det'} style={{ borderBottom: `1px solid ${C.g2}` }}>
+                                    <td colSpan={7} style={{ padding: '0 0 16px 32px', background: '#F0F7FF' }}>
+                                      <div style={{ display: 'grid', gridTemplateColumns: itsCtrl.length ? '1fr 1fr' : '1fr', gap: 16, paddingTop: 12 }}>
+
+                                        {/* Ítems del contrato */}
+                                        <div>
+                                          <div style={{ fontSize: 11, fontWeight: 700, color: '#1E3A5F', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
+                                            📦 Ítems despachados
+                                          </div>
+                                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                                            <thead>
+                                              <tr style={{ background: '#1E3A5F' }}>
+                                                <th style={{ padding: '6px 10px', textAlign: 'left', color: 'white', fontSize: 10, fontWeight: 700 }}>Ref</th>
+                                                <th style={{ padding: '6px 10px', textAlign: 'left', color: 'white', fontSize: 10, fontWeight: 700 }}>Descripción</th>
+                                                <th style={{ padding: '6px 10px', textAlign: 'center', color: 'white', fontSize: 10, fontWeight: 700 }}>UM</th>
+                                                <th style={{ padding: '6px 10px', textAlign: 'right', color: 'white', fontSize: 10, fontWeight: 700 }}>Cantidad</th>
+                                              </tr>
+                                            </thead>
+                                            <tbody>
+                                              {itsRem.map((ir, idx) => {
+                                                const ic = items_contrato.find(x => x.id === ir.item_contrato_id)
+                                                return (
+                                                  <tr key={ir.id} style={{ background: idx % 2 === 0 ? 'white' : '#F1F5F9', borderBottom: '1px solid #E2E8F0' }}>
+                                                    <td style={{ padding: '6px 10px', fontWeight: 700, color: '#1D4ED8' }}>{ic?.ref || '—'}</td>
+                                                    <td style={{ padding: '6px 10px', maxWidth: 240 }}>{ic?.descripcion || '—'}</td>
+                                                    <td style={{ padding: '6px 10px', textAlign: 'center', color: '#636366' }}>{ic?.unidad || '—'}</td>
+                                                    <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700 }}>{Number(ir.cantidad).toLocaleString('es-CO')}</td>
+                                                  </tr>
+                                                )
+                                              })}
+                                              <tr style={{ background: '#1E3A5F' }}>
+                                                <td colSpan={3} style={{ padding: '7px 10px', color: 'white', fontWeight: 700, fontSize: 11, textAlign: 'right' }}>TOTAL</td>
+                                                <td style={{ padding: '7px 10px', color: 'white', fontWeight: 800, textAlign: 'right', fontSize: 13 }}>{totalRem.toLocaleString('es-CO')}</td>
+                                              </tr>
+                                            </tbody>
+                                          </table>
+                                        </div>
+
+                                        {/* Control interno */}
+                                        {itsCtrl.length > 0 && (
+                                          <div>
+                                            <div style={{ fontSize: 11, fontWeight: 700, color: '#B45309', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
+                                              🔧 Control interno (no facturable)
+                                            </div>
+                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                                              <thead>
+                                                <tr style={{ background: '#FEF3C7' }}>
+                                                  <th style={{ padding: '6px 10px', textAlign: 'left', color: '#B45309', fontSize: 10, fontWeight: 700 }}>Descripción</th>
+                                                  <th style={{ padding: '6px 10px', textAlign: 'center', color: '#B45309', fontSize: 10, fontWeight: 700 }}>UM</th>
+                                                  <th style={{ padding: '6px 10px', textAlign: 'right', color: '#B45309', fontSize: 10, fontWeight: 700 }}>Cantidad</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody>
+                                                {itsCtrl.map((ic, idx) => (
+                                                  <tr key={ic.id} style={{ background: idx % 2 === 0 ? 'white' : '#FFFBEB', borderBottom: '1px solid #FDE68A' }}>
+                                                    <td style={{ padding: '6px 10px' }}>{ic.descripcion}</td>
+                                                    <td style={{ padding: '6px 10px', textAlign: 'center', color: '#636366' }}>{ic.unidad}</td>
+                                                    <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 600 }}>{Number(ic.cantidad).toLocaleString('es-CO')}</td>
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                            </table>
+                                            {itsCtrl[0]?.notas && (
+                                              <div style={{ fontSize: 11, color: '#92400E', marginTop: 6, fontStyle: 'italic' }}>
+                                                Nota: {itsCtrl[0].notas}
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      {rem.notas && (
+                                        <div style={{ marginTop: 10, fontSize: 11, color: '#636366', fontStyle: 'italic', paddingTop: 8, borderTop: '1px dashed #CBD5E1' }}>
+                                          📝 {rem.notas}
+                                        </div>
+                                      )}
+                                    </td>
+                                  </tr>
+                                )}
+                              </>
                             )
                           })}
                         </tbody>
