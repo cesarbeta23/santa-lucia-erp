@@ -86,6 +86,8 @@ export default function Contratos({ dbData, setDbData, toast }) {
   const [contratoSel, setContratoSel] = useState(null)
   const [modalContrato, setModalContrato] = useState(false)
   const [modalItems, setModalItems]       = useState(false)
+  const [editandoCant, setEditandoCant]   = useState(null)
+  const [cantEdit, setCantEdit]           = useState('')
   const [form, setForm]               = useState(emptyContrato)
   const [editId, setEditId]           = useState(null)
   const [delId, setDelId]             = useState(null)
@@ -164,6 +166,19 @@ export default function Contratos({ dbData, setDbData, toast }) {
       toast('Contrato eliminado', 'ok'); setDelId(null)
       if (vista === 'detalle') setVista('lista')
     } catch (e) { toast('Error: ' + e.message, 'err') }
+  }
+
+  // ── Editar cantidad de ítem ───────────────────────────────
+  async function guardarCantidad(itemId) {
+    const nueva = Number(cantEdit)
+    if (isNaN(nueva) || nueva < 0) { toast('Cantidad inválida', 'err'); return }
+    try {
+      const { data, error } = await supabase.from('items_contrato').update({ cantidad: nueva }).eq('id', itemId).select().single()
+      if (error) throw error
+      setDbData(d => ({ ...d, items_contrato: d.items_contrato.map(i => i.id === itemId ? data : i) }))
+      toast('Cantidad actualizada', 'ok')
+    } catch (e) { toast('Error: ' + e.message, 'err') }
+    setEditandoCant(null); setCantEdit('')
   }
 
   // ── Extracción IA ─────────────────────────────────────────
@@ -311,7 +326,23 @@ export default function Contratos({ dbData, setDbData, toast }) {
                     <td style={{ padding: '9px 12px', fontWeight: 600, color: C.or, whiteSpace: 'nowrap' }}>{item.ref}</td>
                     <td style={{ padding: '9px 12px', maxWidth: 360 }}>{item.descripcion}</td>
                     <td style={{ padding: '9px 12px', color: C.g5 }}>{item.unidad}</td>
-                    <td style={{ padding: '9px 12px', textAlign: 'right' }}>{Number(item.cantidad).toLocaleString('es-CO')}</td>
+                    <td style={{ padding: '9px 12px', textAlign: 'right' }}>
+                        {editandoCant === item.id ? (
+                          <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', alignItems: 'center' }}>
+                            <input type="number" value={cantEdit} onChange={e => setCantEdit(e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') guardarCantidad(item.id); if (e.key === 'Escape') setEditandoCant(null) }}
+                              autoFocus style={{ width: 80, padding: '3px 6px', border: '1px solid #F97316', borderRadius: 4, fontSize: 12, textAlign: 'right' }} />
+                            <button onClick={() => guardarCantidad(item.id)} style={{ background:'#15803D', border:'none', color:'white', borderRadius:4, padding:'3px 8px', cursor:'pointer', fontSize:12 }}>✓</button>
+                            <button onClick={() => setEditandoCant(null)} style={{ background:'#D1D1D6', border:'none', borderRadius:4, padding:'3px 8px', cursor:'pointer', fontSize:12 }}>✕</button>
+                          </div>
+                        ) : (
+                          <span onClick={() => { setEditandoCant(item.id); setCantEdit(String(item.cantidad || 0)) }}
+                            title="Clic para editar cantidad"
+                            style={{ cursor: 'pointer', borderBottom: '1px dashed #C7C7CC', paddingBottom: 1 }}>
+                            {Number(item.cantidad).toLocaleString('es-CO')}
+                          </span>
+                        )}
+                      </td>
                     <td style={{ padding: '9px 12px', textAlign: 'right' }}>{fmt(item.vr_unitario)}</td>
                     <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600 }}>{fmt(Number(item.cantidad)*Number(item.vr_unitario))}</td>
                   </tr>

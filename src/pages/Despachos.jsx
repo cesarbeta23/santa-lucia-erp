@@ -270,19 +270,28 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
       const { data: its, error: e2 } = await supabase.from('items_remision').insert(rows).select()
       if (e2) throw e2
       setDbData(d => ({ ...d, items_remision: [...d.items_remision, ...its] }))
-      // Alertas por sobrepasar cantidad contratada
-      const alertas = []
+      // Verificar excesos vs contrato
+      const excesos = []
       cantValidas.forEach(([itemId, cant]) => {
         const ic = items_contrato.find(i => i.id === itemId)
         if (!ic) return
         const yaDesp = cantDespachada(itemId)
         const nuevaDesp = yaDesp + Number(cant)
-        if (nuevaDesp > Number(ic.cantidad || 0)) {
-          alertas.push(`⚠️ ${ic.ref}: despachado ${nuevaDesp.toLocaleString('es-CO')} supera contrato ${Number(ic.cantidad).toLocaleString('es-CO')}`)
+        const contratado = Number(ic.cantidad || 0)
+        if (nuevaDesp > contratado) {
+          excesos.push({ ref: ic.ref, contratado, yaDesp, estaCant: Number(cant), nuevaDesp, exceso: nuevaDesp - contratado })
         }
       })
-      if (alertas.length) {
-        setTimeout(() => alertas.forEach(a => toast(a, 'err')), 500)
+      if (excesos.length) {
+        const msg = excesos.map(e => `• ${e.ref}: contrato ${e.contratado}, ya despachado ${e.yaDesp}, esta remisión ${e.estaCant} → total ${e.nuevaDesp} (exceso: ${e.exceso})`).join('\n')
+        const justificacion = window.prompt(
+          `⚠️ ATENCIÓN — Estas cantidades superan el contrato:\n\n${msg}\n\nPara continuar, escribe una justificación (o Cancelar para ajustar):`,
+          ''
+        )
+        if (justificacion === null) { setSaving(false); return }
+        if (!justificacion.trim()) { toast('Debes escribir una justificación para despachar cantidades extra', 'err'); setSaving(false); return }
+        // Guardar con nota de exceso
+        formRem.notas = (formRem.notas ? formRem.notas + ' | ' : '') + `EXCESO JUSTIFICADO: ${justificacion}`
       }
       toast(`Remisión ${formRem.numero} guardada`, 'ok')
       setModalRem(false); setCantidades({}); setEditRemId(null)
@@ -387,17 +396,6 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
                   <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                     <div style={{ width: 140 }}><Progress value={pct} /></div>
                     <span style={{ fontSize: 12, color: C.g5 }}>{Math.round(pct)}% despachado</span>
-                    {(() => {
-                      const xFact = itsContr.reduce((s, it) => s + Math.max(0, cantDespachada(it.id) - cantFacturada(it.id)), 0)
-                      const vrXFact = itsContr.reduce((s, it) => s + Math.max(0, cantDespachada(it.id) - cantFacturada(it.id)) * Number(it.vr_unitario||0), 0)
-                      return xFact > 0 ? (
-                        <div style={{ background: '#FFF7ED', border: `1px solid #FED7AA`, borderRadius: 8, padding: '6px 12px', fontSize: 12 }}>
-                          <span style={{ color: C.orD, fontWeight: 700 }}>⚡ {xFact.toLocaleString('es-CO')} und por facturar</span>
-                          {vrXFact > 0 && <span style={{ color: C.or, marginLeft: 8 }}>{fmt(vrXFact)}</span>}
-                        </div>
-                      ) : null
-                    })()}
-                    <Btn onClick={() => exportarPendiente(contrato)}>📊 Exportar cobro</Btn>
                     <Btn variant="primary" onClick={() => abrirNuevaRemision(contrato)}>+ Nueva remisión</Btn>
                   </div>
                 </div>
@@ -412,8 +410,6 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
                         <th style={{ padding: '9px 12px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: C.g5, borderBottom: `2px solid ${C.g2}`, width: 60 }}>UM</th>
                         <th style={{ padding: '9px 12px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: C.g5, borderBottom: `2px solid ${C.g2}`, width: 90 }}>CONTRATO</th>
                         <th style={{ padding: '9px 12px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: C.gnD, borderBottom: `2px solid ${C.g2}`, width: 90 }}>DESPACHADO</th>
-                        <th style={{ padding: '9px 12px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: C.bl, borderBottom: `2px solid ${C.g2}`, width: 90 }}>FACTURADO</th>
-                        <th style={{ padding: '9px 12px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: C.or, borderBottom: `2px solid ${C.g2}`, width: 90 }}>X FACTURAR</th>
                         <th style={{ padding: '9px 12px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: C.am, borderBottom: `2px solid ${C.g2}`, width: 90 }}>FALTANTE</th>
                       </tr>
                     </thead>
@@ -421,8 +417,6 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
                       {itsContr.map(it => {
                         const contratado = Number(it.cantidad || 0)
                         const despachado = cantDespachada(it.id)
-                        const facturado  = cantFacturada(it.id)
-                        const xFact      = Math.max(0, despachado - facturado)
                         const faltante   = Math.max(0, contratado - despachado)
                         const completo   = despachado >= contratado
                         return (
@@ -432,9 +426,7 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
                             <td style={{ padding: '8px 12px', textAlign: 'center', color: C.g5 }}>{it.unidad}</td>
                             <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }}>{contratado.toLocaleString('es-CO')}</td>
                             <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: C.gnD }}>{despachado.toLocaleString('es-CO')}</td>
-                            <td style={{ padding: '8px 12px', textAlign: 'right', color: C.bl }}>{facturado.toLocaleString('es-CO')}</td>
-                            <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: xFact > 0 ? 700 : 400, color: xFact > 0 ? C.or : C.g4 }}>{xFact.toLocaleString('es-CO')}</td>
-                            <td style={{ padding: '8px 12px', textAlign: 'right', color: faltante > 0 ? C.am : C.gnD }}>{faltante.toLocaleString('es-CO')}</td>
+                            <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: faltante > 0 ? 700 : 400, color: faltante > 0 ? C.am : C.gnD }}>{faltante.toLocaleString('es-CO')}</td>
                           </tr>
                         )
                       })}

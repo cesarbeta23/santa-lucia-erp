@@ -63,6 +63,7 @@ export default function Facturacion({ dbData, setDbData, toast, user }) {
     contratos = [], proyectos = [], constructoras = [],
     items_contrato = [],
   } = dbData
+  // Acceso directo a dbData para items_remision (cargado en App.jsx)
 
   const [vista, setVista]           = useState('global')   // global | proyecto | acta
   const [proySel, setProySel]       = useState(null)
@@ -86,6 +87,12 @@ export default function Facturacion({ dbData, setDbData, toast, user }) {
   // ── Helpers ───────────────────────────────────────────────
   const totalFactContrato = cid =>
     actas_facturacion.filter(a => a.contrato_id === cid).reduce((s, a) => s + (Number(a.total) || 0), 0)
+
+  // Cantidad despachada de un ítem (desde remisiones)
+  const cantDespachada = (itemContratoId) =>
+    (dbData.items_remision || [])
+      .filter(i => i.item_contrato_id === itemContratoId)
+      .reduce((s, i) => s + Number(i.cantidad || 0), 0)
 
   const calcTotales = (items, contrato) => {
     const subtotal = items.reduce((s, i) => s + Number(i.cantidad||0) * Number(i.vr_unitario_sin_iva||0), 0)
@@ -184,6 +191,22 @@ export default function Facturacion({ dbData, setDbData, toast, user }) {
 
   async function guardarItemsIA() {
     const contrato = contratos.find(c => c.id === actaSel?.contrato_id)
+    // Validar: no facturar más de lo despachado
+    const excesos = parsedItems.filter(it => {
+      const ic = items_contrato.find(i => i.ref === it.ref && i.contrato_id === actaSel.contrato_id)
+      if (!ic) return false
+      const despachado = cantDespachada(ic.id)
+      if (despachado === 0) return false  // si no hay despachos, no validar
+      return Number(it.cantidad || 0) > despachado
+    })
+    if (excesos.length) {
+      const msg = excesos.map(e => {
+        const ic = items_contrato.find(i => i.ref === e.ref && i.contrato_id === actaSel.contrato_id)
+        return `• ${e.ref}: intentas facturar ${e.cantidad} pero solo hay ${cantDespachada(ic?.id)} despachado`
+      }).join('\n')
+      toast(`No puedes facturar más de lo despachado:\n${msg}`, 'err')
+      return
+    }
     const { subtotal, iva, total } = calcTotales(parsedItems, contrato)
     setSavingItems(true)
     try {
@@ -214,6 +237,22 @@ export default function Facturacion({ dbData, setDbData, toast, user }) {
     const validos = itemsManual.filter(i => Number(i.cantidad) > 0)
     if (!validos.length) { toast('Ingresa al menos una cantidad', 'err'); return }
     const contrato = contratos.find(c => c.id === actaSel?.contrato_id)
+    // Validar: no facturar más de lo despachado
+    const excesos2 = validos.filter(it => {
+      const ic = items_contrato.find(i => i.ref === it.ref && i.contrato_id === actaSel.contrato_id)
+      if (!ic) return false
+      const despachado = cantDespachada(ic.id)
+      if (despachado === 0) return false
+      return Number(it.cantidad || 0) > despachado
+    })
+    if (excesos2.length) {
+      const msg = excesos2.map(e => {
+        const ic = items_contrato.find(i => i.ref === e.ref && i.contrato_id === actaSel.contrato_id)
+        return `• ${e.ref}: intentas facturar ${e.cantidad} pero solo hay ${cantDespachada(ic?.id)} despachado`
+      }).join('\n')
+      toast(`No puedes facturar más de lo despachado:\n${msg}`, 'err')
+      return
+    }
     const { subtotal, iva, total } = calcTotales(validos, contrato)
     setSavingItems(true)
     try {
@@ -386,6 +425,91 @@ export default function Facturacion({ dbData, setDbData, toast, user }) {
                     <span style={{ fontSize: 12, color: C.g5, whiteSpace: 'nowrap' }}>{Math.round(pct)}% · Por facturar: {fmt(Number(contrato.valor_total) - totalFact)}</span>
                   </div>
                 </div>
+
+                {/* Cuadro despachos vs facturado */}
+                {(() => {
+                  const itsContr = items_contrato.filter(i => i.contrato_id === contrato.id)
+                  const pendientes = itsContr.filter(it => {
+                    const desp = (dbData.items_remision||[]).filter(r => r.item_contrato_id === it.id).reduce((s,r) => s+Number(r.cantidad||0), 0)
+                    const fact = items_acta_facturacion.filter(r => r.item_contrato_id === it.id).reduce((s,r) => s+Number(r.cantidad||0), 0)
+                    return Math.max(0, desp - fact) > 0
+                  })
+                  if (!itsContr.length) return null
+                  const totalXFact = pendientes.reduce((s, it) => {
+                    const desp = (dbData.items_remision||[]).filter(r => r.item_contrato_id === it.id).reduce((s2,r) => s2+Number(r.cantidad||0), 0)
+                    const fact = items_acta_facturacion.filter(r => r.item_contrato_id === it.id).reduce((s2,r) => s2+Number(r.cantidad||0), 0)
+                    return s + Math.max(0, desp - fact) * Number(it.vr_unitario||0)
+                  }, 0)
+                  return (
+                    <div style={{ marginBottom: 16 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: C.g5, textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                          Control despacho vs facturación
+                        </span>
+                        {totalXFact > 0 && (
+                          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                            <div style={{ background: '#FFF7ED', border: `1px solid #FED7AA`, borderRadius: 8, padding: '5px 12px', fontSize: 12 }}>
+                              <span style={{ color: '#EA6A0A', fontWeight: 700 }}>⚡ Por facturar: {fmt(totalXFact)}</span>
+                            </div>
+                            <Btn size="sm" onClick={() => {
+                              const constr = constructoras.find(c => c.id === proySel.constructora_id)
+                              const payload2 = {
+                                proyecto: proySel.nombre, constructora: constr?.nombre||'—',
+                                contrato: contrato.numero||'—', tipo: contrato.tipo,
+                                fecha: new Date().toLocaleDateString('es-CO'),
+                                items: itsContr.map(it => {
+                                  const desp2 = (dbData.items_remision||[]).filter(r => r.item_contrato_id === it.id).reduce((s,r) => s+Number(r.cantidad||0), 0)
+                                  const fact2 = items_acta_facturacion.filter(r => r.item_contrato_id === it.id).reduce((s,r) => s+Number(r.cantidad||0), 0)
+                                  const xf2 = Math.max(0, desp2 - fact2)
+                                  return { ref: it.ref, descripcion: it.descripcion, unidad: it.unidad, despachado: desp2, facturado: fact2, xFact: xf2, vrUnit: Number(it.vr_unitario||0), totalFact: xf2 * Number(it.vr_unitario||0) }
+                                }).filter(i => i.xFact > 0)
+                              }
+                              const fmt3 = n => new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(n||0)
+                              const totalX = payload2.items.reduce((s,i) => s+i.xFact, 0)
+                              const totalC = payload2.items.reduce((s,i) => s+i.totalFact, 0)
+                              const html2 = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Cobro ${payload2.proyecto}</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1a1a2e}.page{padding:28px 32px}.header{background:#1F3A5F;color:white;padding:18px 24px;border-radius:8px 8px 0 0}.header h1{font-size:18px;font-weight:800;margin-bottom:2px}.header p{font-size:11px;color:#93C5FD;font-weight:600;text-transform:uppercase;letter-spacing:.06em}.subheader{background:#1E293B;padding:10px 24px;border-radius:0 0 8px 8px;margin-bottom:20px;display:flex;gap:32px;flex-wrap:wrap}.info-item{display:flex;flex-direction:column}.info-label{font-size:9px;color:#64748B;text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px}.info-value{font-size:12px;color:white;font-weight:700}table{width:100%;border-collapse:collapse;margin-bottom:0}thead tr{background:#1E3A5F}thead th{padding:9px 10px;color:white;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;text-align:right;border:1px solid #2D5A8E}thead th:nth-child(1){text-align:center;width:80px}thead th:nth-child(2){text-align:left}thead th:nth-child(3){text-align:center;width:50px}tbody tr:nth-child(even){background:#F8FAFC}tbody tr:nth-child(odd){background:#FFFFFF}tbody td{padding:8px 10px;border:1px solid #E2E8F0;font-size:10px;text-align:right;vertical-align:middle}tbody td:nth-child(1){text-align:center;font-weight:700;color:#1D4ED8}tbody td:nth-child(2){text-align:left}tbody td:nth-child(3){text-align:center;color:#64748B}tbody td:nth-child(6){font-weight:700}tbody td:nth-child(8){font-weight:700;color:#1D4ED8}.total-row{background:#1E3A5F!important}.total-row td{color:white!important;font-weight:700!important;font-size:11px!important;padding:11px 10px!important;border-color:#2D5A8E!important}.grand{background:#1D4ED8!important;font-size:13px!important}.nota{margin-top:16px;padding:12px 16px;background:#F1F5F9;border-left:3px solid #1E3A5F;border-radius:4px;font-size:9px;color:#64748B;line-height:1.6}.footer{margin-top:20px;text-align:center;font-size:9px;color:#94A3B8;padding-top:12px;border-top:1px solid #E2E8F0}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.no-print{display:none}}</style></head><body><div class="page"><div class="no-print" style="text-align:right;margin-bottom:16px"><button onclick="window.print()" style="background:#1E3A5F;color:white;border:none;padding:10px 24px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer">🖨️ Guardar / Imprimir PDF</button></div><div class="header"><h1>🪵 Santa Lucía Muebles y Pisos S.A.S.</h1><p>Informe de Cobro — Pendiente por Facturar</p></div><div class="subheader"><div class="info-item"><span class="info-label">Constructora</span><span class="info-value">${payload2.constructora}</span></div><div class="info-item"><span class="info-label">Proyecto / Obra</span><span class="info-value">${payload2.proyecto}</span></div><div class="info-item"><span class="info-label">Contrato</span><span class="info-value">#${payload2.contrato} (${payload2.tipo})</span></div><div class="info-item"><span class="info-label">Fecha</span><span class="info-value">${payload2.fecha}</span></div><div class="info-item"><span class="info-label">NIT</span><span class="info-value">900.602.879-5</span></div></div><table><thead><tr><th>Ref</th><th style="text-align:left">Descripción</th><th>UM</th><th>Despachado</th><th>Facturado</th><th>X Facturar</th><th>Vr. Unitario</th><th>Total a Cobrar</th></tr></thead><tbody>${payload2.items.map(it=>`<tr><td>${it.ref}</td><td style="text-align:left">${it.descripcion}</td><td>${it.unidad}</td><td>${Number(it.despachado).toLocaleString('es-CO')}</td><td>${Number(it.facturado).toLocaleString('es-CO')}</td><td>${Number(it.xFact).toLocaleString('es-CO')}</td><td>${fmt3(it.vrUnit)}</td><td>${fmt3(it.totalFact)}</td></tr>`).join('')}</tbody><tr class="total-row"><td colspan="5" style="text-align:right">TOTAL PENDIENTE POR FACTURAR</td><td>${totalX.toLocaleString('es-CO')}</td><td></td><td class="grand">${fmt3(totalC)}</td></tr></table><div class="nota"><strong>Nota:</strong> Los valores corresponden al suministro sin IVA. El IVA (19%) se discriminará en la factura.<br>Santa Lucía Muebles y Pisos S.A.S. · NIT 900.602.879-5 · Tel: 311.341.04.58 · cesarbeta@gmail.com</div><div class="footer">Documento generado el ${new Date().toLocaleDateString('es-CO',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div></div></body></html>`
+                              const v2 = window.open('','_blank','width=960,height=700')
+                              if(v2){v2.document.write(html2);v2.document.close()}
+                            }}>📊 Exportar cobro</Btn>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ ...card, padding: 0, overflow: 'auto', marginBottom: 12 }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 600 }}>
+                          <thead>
+                            <tr style={{ background: C.g0 }}>
+                              {['Ref','Descripción','UM','Contrato','Despachado','Facturado','X Facturar','Faltante envío'].map((h,i) => (
+                                <th key={i} style={{ padding:'8px 10px', textAlign:i>2?'right':'left', fontSize:10, fontWeight:700, color:C.g5, textTransform:'uppercase', letterSpacing:'.06em', borderBottom:`2px solid ${C.g2}`, whiteSpace:'nowrap',
+                                  ...(h==='X Facturar'?{color:C.or}:h==='Facturado'?{color:C.bl}:h==='Despachado'?{color:C.gnD}:{}) }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {itsContr.map(it => {
+                              const contratado2 = Number(it.cantidad||0)
+                              const desp3 = (dbData.items_remision||[]).filter(r => r.item_contrato_id === it.id).reduce((s,r) => s+Number(r.cantidad||0), 0)
+                              const fact3 = items_acta_facturacion.filter(r => r.item_contrato_id === it.id).reduce((s,r) => s+Number(r.cantidad||0), 0)
+                              const xf3   = Math.max(0, desp3 - fact3)
+                              const falt3 = Math.max(0, contratado2 - desp3)
+                              return (
+                                <tr key={it.id} style={{ borderBottom:`1px solid ${C.g1}`, background: xf3>0?'#FFF7ED':'' }}>
+                                  <td style={{ padding:'7px 10px', fontWeight:700, color:C.or }}>{it.ref}</td>
+                                  <td style={{ padding:'7px 10px', maxWidth:260, fontSize:11 }}>{it.descripcion}</td>
+                                  <td style={{ padding:'7px 10px', textAlign:'right', color:C.g5 }}>{it.unidad}</td>
+                                  <td style={{ padding:'7px 10px', textAlign:'right' }}>{contratado2.toLocaleString('es-CO')}</td>
+                                  <td style={{ padding:'7px 10px', textAlign:'right', color:C.gnD, fontWeight:600 }}>{desp3.toLocaleString('es-CO')}</td>
+                                  <td style={{ padding:'7px 10px', textAlign:'right', color:C.bl }}>{fact3.toLocaleString('es-CO')}</td>
+                                  <td style={{ padding:'7px 10px', textAlign:'right', fontWeight:xf3>0?700:400, color:xf3>0?C.or:C.g4 }}>{xf3.toLocaleString('es-CO')}</td>
+                                  <td style={{ padding:'7px 10px', textAlign:'right', color:falt3>0?C.am:C.gnD }}>{falt3.toLocaleString('es-CO')}</td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 {/* Actas del contrato */}
                 {actas.length === 0 ? (
