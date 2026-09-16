@@ -61,6 +61,74 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
     return totalContr > 0 ? (totalDesp / totalContr) * 100 : 0
   }
 
+  // ── Exportar Excel pendiente por facturar ───────────────────
+  async function exportarPendiente(contrato) {
+    const itsContr = items_contrato.filter(i => i.contrato_id === contrato.id)
+    const constr   = constructoras.find(c => c.id === proySel.constructora_id)
+    const pendientes = itsContr.map(it => {
+      const contratado = Number(it.cantidad || 0)
+      const despachado = cantDespachada(it.id)
+      const facturado  = cantFacturada(it.id)
+      const xFact      = Math.max(0, despachado - facturado)
+      const vrUnit     = Number(it.vr_unitario || 0)
+      return { ...it, contratado, despachado, facturado, xFact, vrUnit, totalFact: xFact * vrUnit }
+    }).filter(it => it.xFact > 0)
+
+    if (!pendientes.length) {
+      toast('No hay ítems pendientes por facturar', 'info')
+      return
+    }
+
+    // Llamar a la API del servidor para generar Excel
+    const payload = {
+      proyecto: proySel.nombre,
+      constructora: constr?.nombre || '—',
+      contrato: contrato.numero || '—',
+      tipo: contrato.tipo,
+      fecha: new Date().toLocaleDateString('es-CO'),
+      items: pendientes,
+    }
+
+    try {
+      const resp = await fetch('/api/generar-excel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!resp.ok) throw new Error('Error generando Excel')
+      const blob = await resp.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `PENDIENTE_${proySel.nombre}_${contrato.tipo}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast('Excel generado correctamente', 'ok')
+    } catch {
+      toast('Generando Excel localmente…', 'info')
+      // Fallback: CSV simple
+      const csv = [
+        `INFORME DE COBRO - ${proySel.nombre}`,
+        `Constructora: ${constr?.nombre || '—'}`,
+        `Contrato: ${contrato.numero || '—'} (${contrato.tipo})`,
+        `Fecha: ${new Date().toLocaleDateString('es-CO')}`,
+        '',
+        'Ref,Descripción,UM,Despachado,Facturado,X Facturar,Vr. Unitario,Total',
+        ...pendientes.map(it =>
+          `${it.ref},"${it.descripcion}",${it.unidad},${it.despachado},${it.facturado},${it.xFact},${it.vrUnit},${it.totalFact}`
+        ),
+        '',
+        `TOTAL A FACTURAR,,,,,,, ${pendientes.reduce((s,i) => s + i.totalFact, 0)}`,
+      ].join('
+')
+      const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href = url; a.download = `PENDIENTE_${proySel.nombre}.csv`; a.click()
+      URL.revokeObjectURL(url)
+    }
+  }
+
   // ── Guardar remisión ──────────────────────────────────────
   async function guardarRemision() {
     if (!formRem.numero) { toast('Ingresa el número de remisión', 'err'); return }
@@ -101,6 +169,20 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
       const { data: its, error: e2 } = await supabase.from('items_remision').insert(rows).select()
       if (e2) throw e2
       setDbData(d => ({ ...d, items_remision: [...d.items_remision, ...its] }))
+      // Alertas por sobrepasar cantidad contratada
+      const alertas = []
+      cantValidas.forEach(([itemId, cant]) => {
+        const ic = items_contrato.find(i => i.id === itemId)
+        if (!ic) return
+        const yaDesp = cantDespachada(itemId)
+        const nuevaDesp = yaDesp + Number(cant)
+        if (nuevaDesp > Number(ic.cantidad || 0)) {
+          alertas.push(`⚠️ ${ic.ref}: despachado ${nuevaDesp.toLocaleString('es-CO')} supera contrato ${Number(ic.cantidad).toLocaleString('es-CO')}`)
+        }
+      })
+      if (alertas.length) {
+        setTimeout(() => alertas.forEach(a => toast(a, 'err')), 500)
+      }
       toast(`Remisión ${formRem.numero} guardada`, 'ok')
       setModalRem(false); setCantidades({}); setEditRemId(null)
     } catch (e) { toast('Error: ' + e.message, 'err') }
@@ -204,6 +286,17 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
                   <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                     <div style={{ width: 140 }}><Progress value={pct} /></div>
                     <span style={{ fontSize: 12, color: C.g5 }}>{Math.round(pct)}% despachado</span>
+                    {(() => {
+                      const xFact = itsContr.reduce((s, it) => s + Math.max(0, cantDespachada(it.id) - cantFacturada(it.id)), 0)
+                      const vrXFact = itsContr.reduce((s, it) => s + Math.max(0, cantDespachada(it.id) - cantFacturada(it.id)) * Number(it.vr_unitario||0), 0)
+                      return xFact > 0 ? (
+                        <div style={{ background: '#FFF7ED', border: `1px solid #FED7AA`, borderRadius: 8, padding: '6px 12px', fontSize: 12 }}>
+                          <span style={{ color: C.orD, fontWeight: 700 }}>⚡ {xFact.toLocaleString('es-CO')} und por facturar</span>
+                          {vrXFact > 0 && <span style={{ color: C.or, marginLeft: 8 }}>{fmt(vrXFact)}</span>}
+                        </div>
+                      ) : null
+                    })()}
+                    <Btn onClick={() => exportarPendiente(contrato)}>📊 Exportar cobro</Btn>
                     <Btn variant="primary" onClick={() => abrirNuevaRemision(contrato)}>+ Nueva remisión</Btn>
                   </div>
                 </div>
@@ -248,63 +341,69 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
                   </table>
                 </div>
 
-                {/* Lista de remisiones */}
+                {/* Lista de remisiones — tabla */}
                 {remisContr.length > 0 && (
                   <div>
                     <div style={{ fontSize: 12, fontWeight: 700, color: C.g5, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
-                      Remisiones
+                      Remisiones ({remisContr.length})
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {remisContr.map(rem => {
-                        const itsRem = items_remision.filter(i => i.remision_id === rem.id)
-                        const itsCtrl = items_control_despacho.filter(i => i.remision_id === rem.id)
-                        const totalRem = itsRem.reduce((s, i) => s + Number(i.cantidad || 0), 0)
-                        return (
-                          <div key={rem.id} style={{ ...card, padding: '12px 16px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: itsRem.length ? 10 : 0 }}>
-                              <div>
-                                <span style={{ fontWeight: 700, fontSize: 14 }}>REM {rem.numero}</span>
-                                <span style={{ fontSize: 13, color: C.g5, marginLeft: 12 }}>📅 {fmtDate(rem.fecha)}</span>
-                                {rem.transportador && <span style={{ fontSize: 12, color: C.g4, marginLeft: 12 }}>🚚 {rem.transportador}</span>}
-                                <span style={{ fontSize: 12, color: C.g5, marginLeft: 12 }}>{itsRem.length} ítem(s) · {totalRem.toLocaleString('es-CO')} und</span>
-                                {itsCtrl.length > 0 && <span style={{ fontSize: 12, color: C.g4, marginLeft: 12 }}>+ {itsCtrl.length} ctrl</span>}
-                              </div>
-                              <div style={{ display: 'flex', gap: 6 }}>
-                                <Btn size="sm" onClick={() => { setRemSel(rem); setItemsControl([{ descripcion: '', unidad: 'und', cantidad: '' }]); setModalControl(true) }}>
-                                  + Control
-                                </Btn>
-                                <Btn size="sm" onClick={() => abrirEditarRemision(rem)}>Editar</Btn>
-                                <Btn size="sm" variant="danger" onClick={() => eliminarRemision(rem.id)}>Eliminar</Btn>
-                              </div>
-                            </div>
-                            {itsRem.length > 0 && (
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                                {itsRem.map(ir => {
-                                  const ic = items_contrato.find(x => x.id === ir.item_contrato_id)
-                                  return (
-                                    <div key={ir.id} style={{ background: C.g0, border: `1px solid ${C.g2}`, borderRadius: 6, padding: '4px 10px', fontSize: 12 }}>
-                                      <span style={{ fontWeight: 600, color: C.or }}>{ic?.ref}</span>
-                                      <span style={{ color: C.g5, marginLeft: 6 }}>{Number(ir.cantidad).toLocaleString('es-CO')} {ic?.unidad}</span>
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                            )}
-                            {itsCtrl.length > 0 && (
-                              <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px dashed ${C.g2}` }}>
-                                <div style={{ fontSize: 11, color: C.g4, marginBottom: 4 }}>Control interno:</div>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                  {itsCtrl.map(ic => (
-                                    <div key={ic.id} style={{ background: C.amL, border: `1px solid #FDE68A`, borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#B45309' }}>
-                                      {ic.descripcion}: {Number(ic.cantidad).toLocaleString('es-CO')} {ic.unidad}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
+                    <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <thead>
+                          <tr style={{ background: C.g0 }}>
+                            {['Remisión','Fecha','Transportador','Ítems','Und. total','Control','Acciones'].map((h,i) => (
+                              <th key={i} style={{ padding: '9px 12px', textAlign: i > 2 ? 'center' : 'left', fontSize: 11, fontWeight: 700, color: C.g5, textTransform: 'uppercase', letterSpacing: '.06em', borderBottom: `2px solid ${C.g2}`, whiteSpace: 'nowrap' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {remisContr.map(rem => {
+                            const itsRem  = items_remision.filter(i => i.remision_id === rem.id)
+                            const itsCtrl = items_control_despacho.filter(i => i.remision_id === rem.id)
+                            const totalRem = itsRem.reduce((s, i) => s + Number(i.cantidad || 0), 0)
+                            return (
+                              <tr key={rem.id} style={{ borderBottom: `1px solid ${C.g1}` }}
+                                onMouseEnter={e => e.currentTarget.style.background = C.g0}
+                                onMouseLeave={e => e.currentTarget.style.background = ''}
+                              >
+                                <td style={{ padding: '10px 12px' }}>
+                                  <span style={{ fontWeight: 700, color: C.or }}>REM {rem.numero}</span>
+                                  {rem.notas && <div style={{ fontSize: 11, color: C.g4, marginTop: 2 }}>{rem.notas}</div>}
+                                </td>
+                                <td style={{ padding: '10px 12px', color: C.g5, whiteSpace: 'nowrap' }}>📅 {fmtDate(rem.fecha)}</td>
+                                <td style={{ padding: '10px 12px', color: C.g5 }}>{rem.transportador || '—'}</td>
+                                <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'center' }}>
+                                    {itsRem.map(ir => {
+                                      const ic = items_contrato.find(x => x.id === ir.item_contrato_id)
+                                      return ic ? (
+                                        <span key={ir.id} style={{ background: C.orL, border: `1px solid ${C.orM}`, borderRadius: 4, padding: '2px 7px', fontSize: 11, fontWeight: 600, color: C.orD }}>
+                                          {ic.ref} {Number(ir.cantidad).toLocaleString('es-CO')}
+                                        </span>
+                                      ) : null
+                                    })}
+                                  </div>
+                                </td>
+                                <td style={{ padding: '10px 12px', textAlign: 'center', fontWeight: 700 }}>{totalRem.toLocaleString('es-CO')}</td>
+                                <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                                  {itsCtrl.length > 0 ? (
+                                    <span style={{ background: C.amL, border: `1px solid #FDE68A`, borderRadius: 4, padding: '2px 8px', fontSize: 11, color: '#B45309' }}>
+                                      {itsCtrl.length} ítem(s)
+                                    </span>
+                                  ) : <span style={{ color: C.g3 }}>—</span>}
+                                </td>
+                                <td style={{ padding: '10px 12px' }}>
+                                  <div style={{ display: 'flex', gap: 5 }}>
+                                    <Btn size="sm" onClick={() => { setRemSel(rem); setItemsControl([{ descripcion: '', unidad: 'und', cantidad: '' }]); setModalControl(true) }}>+ Control</Btn>
+                                    <Btn size="sm" onClick={() => abrirEditarRemision(rem)}>Editar</Btn>
+                                    <Btn size="sm" variant="danger" onClick={() => eliminarRemision(rem.id)}>Eliminar</Btn>
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 )}
