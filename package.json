@@ -1,7 +1,7 @@
 {
   "name": "santa-lucia-erp",
   "version": "1.0.0",
-  "description": "Sistema de Información - Santa Lucía Muebles y Pisos",
+  "description": "Sistema de Informaci\u00f3n - Santa Luc\u00eda Muebles y Pisos",
   "main": "electron/main.js",
   "scripts": {
     "dev": "vite",
@@ -12,7 +12,8 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.0",
