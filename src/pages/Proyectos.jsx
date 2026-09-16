@@ -92,6 +92,54 @@ export default function Proyectos({ dbData, setDbData, toast, user }) {
     } catch (e) { toast('Error: ' + e.message, 'err') }
   }
 
+  // ── Modales compartidos (disponibles en ambas vistas) ────
+  const SharedModals = () => (<>
+
+      {/* Modal crear/editar */}
+      {modal && (
+        <Modal title={editId ? 'Editar proyecto' : 'Nuevo proyecto'} onClose={() => setModal(false)} wide>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
+            <div style={{ gridColumn: '1/-1' }}>
+              <Inp label="Nombre del proyecto / obra *" value={form.nombre}
+                onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
+                placeholder="Ej: Verde Silvestre, Polanco, M. Living…" />
+            </div>
+            <div style={{ gridColumn: '1/-1' }}>
+              <Sel label="Constructora *" value={form.constructora_id}
+                onChange={e => setForm(f => ({ ...f, constructora_id: e.target.value }))}>
+                <option value="">— Seleccionar —</option>
+                {constructoras.filter(c => c.activa).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              </Sel>
+            </div>
+            <Sel label="Estado" value={form.estado} onChange={e => setForm(f => ({ ...f, estado: e.target.value }))}>
+              {Object.entries(ESTADOS).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
+            </Sel>
+            <div />
+            <Inp label="Fecha inicio" type="date" value={form.fecha_inicio||''} onChange={e => setForm(f => ({ ...f, fecha_inicio: e.target.value }))} />
+            <Inp label="Fecha entrega" type="date" value={form.fecha_fin||''} onChange={e => setForm(f => ({ ...f, fecha_fin: e.target.value }))} />
+            <div style={{ gridColumn: '1/-1' }}>
+              <Txt label="Notas" value={form.notas||''} onChange={e => setForm(f => ({ ...f, notas: e.target.value }))} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
+            <Btn onClick={() => setModal(false)}>Cancelar</Btn>
+            <Btn variant="primary" onClick={guardar}>{editId ? 'Guardar' : 'Crear proyecto'}</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {delId && (
+        <Modal title="Eliminar proyecto" onClose={() => setDelId(null)}>
+          <p style={{ fontSize: 14, marginBottom: 8 }}>¿Eliminar <strong>{proyectos.find(p => p.id === delId)?.nombre}</strong>?</p>
+          <p style={{ fontSize: 13, color: C.rd, marginBottom: 20 }}>Se eliminarán todos los contratos, pedidos y actas asociadas.</p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <Btn onClick={() => setDelId(null)}>Cancelar</Btn>
+            <Btn variant="danger" onClick={eliminar}>Sí, eliminar</Btn>
+          </div>
+        </Modal>
+      )}
+  </>)
+
   // ── Dashboard de obra ─────────────────────────────────────
   if (vista === 'dashboard' && proySel) {
     const constru  = constructoras.find(c => c.id === proySel.constructora_id)
@@ -449,49 +497,7 @@ export default function Proyectos({ dbData, setDbData, toast, user }) {
         </div>
       )}
 
-      {/* Modal crear/editar */}
-      {modal && (
-        <Modal title={editId ? 'Editar proyecto' : 'Nuevo proyecto'} onClose={() => setModal(false)} wide>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
-            <div style={{ gridColumn: '1/-1' }}>
-              <Inp label="Nombre del proyecto / obra *" value={form.nombre}
-                onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
-                placeholder="Ej: Verde Silvestre, Polanco, M. Living…" />
-            </div>
-            <div style={{ gridColumn: '1/-1' }}>
-              <Sel label="Constructora *" value={form.constructora_id}
-                onChange={e => setForm(f => ({ ...f, constructora_id: e.target.value }))}>
-                <option value="">— Seleccionar —</option>
-                {constructoras.filter(c => c.activa).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-              </Sel>
-            </div>
-            <Sel label="Estado" value={form.estado} onChange={e => setForm(f => ({ ...f, estado: e.target.value }))}>
-              {Object.entries(ESTADOS).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
-            </Sel>
-            <div />
-            <Inp label="Fecha inicio" type="date" value={form.fecha_inicio||''} onChange={e => setForm(f => ({ ...f, fecha_inicio: e.target.value }))} />
-            <Inp label="Fecha entrega" type="date" value={form.fecha_fin||''} onChange={e => setForm(f => ({ ...f, fecha_fin: e.target.value }))} />
-            <div style={{ gridColumn: '1/-1' }}>
-              <Txt label="Notas" value={form.notas||''} onChange={e => setForm(f => ({ ...f, notas: e.target.value }))} />
-            </div>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
-            <Btn onClick={() => setModal(false)}>Cancelar</Btn>
-            <Btn variant="primary" onClick={guardar}>{editId ? 'Guardar' : 'Crear proyecto'}</Btn>
-          </div>
-        </Modal>
-      )}
-
-      {delId && (
-        <Modal title="Eliminar proyecto" onClose={() => setDelId(null)}>
-          <p style={{ fontSize: 14, marginBottom: 8 }}>¿Eliminar <strong>{proyectos.find(p => p.id === delId)?.nombre}</strong>?</p>
-          <p style={{ fontSize: 13, color: C.rd, marginBottom: 20 }}>Se eliminarán todos los contratos, pedidos y actas asociadas.</p>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-            <Btn onClick={() => setDelId(null)}>Cancelar</Btn>
-            <Btn variant="danger" onClick={eliminar}>Sí, eliminar</Btn>
-          </div>
-        </Modal>
-      )}
+      <SharedModals />
     </div>
   )
 }
