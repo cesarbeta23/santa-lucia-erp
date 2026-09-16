@@ -119,9 +119,8 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
         ),
         '',
         `TOTAL A FACTURAR,,,,,,, ${pendientes.reduce((s,i) => s + i.totalFact, 0)}`,
-      ].join('
-')
-      const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
+      ].join('\n')
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
       const url  = URL.createObjectURL(blob)
       const a    = document.createElement('a')
       a.href = url; a.download = `PENDIENTE_${proySel.nombre}.csv`; a.click()
