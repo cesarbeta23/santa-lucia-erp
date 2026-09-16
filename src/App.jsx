@@ -299,7 +299,7 @@ export default function App() {
       const tables = [
         'constructoras', 'proyectos', 'contratos', 'items_contrato',
         'cotizaciones', 'adicionales', 'pedidos', 'items_pedido', 'proveedores',
-        'despachos', 'items_despacho', 'actas_facturacion',
+        'remisiones', 'items_remision', 'items_control_despacho', 'actas_facturacion',
         'items_acta_facturacion', 'actas_instalacion', 'items_acta_instalacion',
         'subitems_instalacion',
         // tablas existentes:
