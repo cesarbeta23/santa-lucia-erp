@@ -422,6 +422,10 @@ export default function Proyectos({ dbData, setDbData, toast, user }) {
                         </div>
                       )}
                       {p.notas && <div style={{ fontSize: 11, color: C.g4, marginTop: 8, fontStyle: 'italic' }}>{p.notas}</div>}
+                      <div style={{ display: 'flex', gap: 6, marginTop: 10 }} onClick={e => e.stopPropagation()}>
+                        <Btn size="sm" onClick={() => openEdit(p)}>Editar</Btn>
+                        <Btn size="sm" variant="danger" onClick={() => setDelId(p.id)}>Eliminar</Btn>
+                      </div>
                     </div>
                   )
                 })}
