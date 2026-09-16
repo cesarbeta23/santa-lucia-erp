@@ -89,42 +89,144 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
       items: pendientes,
     }
 
-    try {
-      const resp = await fetch('/api/generar-excel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      if (!resp.ok) throw new Error('Error generando Excel')
-      const blob = await resp.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `PENDIENTE_${proySel.nombre}_${contrato.tipo}.xlsx`
-      a.click()
-      URL.revokeObjectURL(url)
-      toast('Excel generado correctamente', 'ok')
-    } catch {
-      toast('Generando Excel localmente…', 'info')
-      // Fallback: CSV simple
-      const csv = [
-        `INFORME DE COBRO - ${proySel.nombre}`,
-        `Constructora: ${constr?.nombre || '—'}`,
-        `Contrato: ${contrato.numero || '—'} (${contrato.tipo})`,
-        `Fecha: ${new Date().toLocaleDateString('es-CO')}`,
-        '',
-        'Ref,Descripción,UM,Despachado,Facturado,X Facturar,Vr. Unitario,Total',
-        ...pendientes.map(it =>
-          `${it.ref},"${it.descripcion}",${it.unidad},${it.despachado},${it.facturado},${it.xFact},${it.vrUnit},${it.totalFact}`
-        ),
-        '',
-        `TOTAL A FACTURAR,,,,,,, ${pendientes.reduce((s,i) => s + i.totalFact, 0)}`,
-      ].join('\n')
-      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
-      const url  = URL.createObjectURL(blob)
-      const a    = document.createElement('a')
-      a.href = url; a.download = `PENDIENTE_${proySel.nombre}.csv`; a.click()
-      URL.revokeObjectURL(url)
+    // Generar PDF via ventana de impresión
+    const fmt2 = n => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n || 0)
+    const totalXFact = pendientes.reduce((s, i) => s + i.xFact, 0)
+    const totalCobro = pendientes.reduce((s, i) => s + i.totalFact, 0)
+
+    const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Informe de Cobro — ${payload.proyecto}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; font-size: 11px; color: #1a1a2e; background: white; }
+  .page { padding: 28px 32px; max-width: 900px; margin: 0 auto; }
+
+  /* CABECERA */
+  .header { background: #1F3A5F; color: white; padding: 18px 24px; border-radius: 8px 8px 0 0; }
+  .header h1 { font-size: 18px; font-weight: 800; letter-spacing: -.02em; margin-bottom: 2px; }
+  .header p  { font-size: 11px; color: #93C5FD; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+  .subheader { background: #1E293B; padding: 10px 24px; border-radius: 0 0 8px 8px; margin-bottom: 20px;
+               display: flex; gap: 32px; flex-wrap: wrap; }
+  .subheader .info-item { display: flex; flex-direction: column; }
+  .subheader .info-label { font-size: 9px; color: #64748B; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 2px; }
+  .subheader .info-value { font-size: 12px; color: white; font-weight: 700; }
+
+  /* TABLA */
+  table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
+  thead tr { background: #1E3A5F; }
+  thead th { padding: 9px 10px; color: white; font-size: 9px; font-weight: 700;
+             text-transform: uppercase; letter-spacing: .06em; text-align: right; border: 1px solid #2D5A8E; }
+  thead th:nth-child(1) { text-align: center; width: 80px; }
+  thead th:nth-child(2) { text-align: left; }
+  thead th:nth-child(3) { text-align: center; width: 50px; }
+  tbody tr:nth-child(even) { background: #F8FAFC; }
+  tbody tr:nth-child(odd)  { background: #FFFFFF; }
+  tbody td { padding: 8px 10px; border: 1px solid #E2E8F0; font-size: 10px; text-align: right; vertical-align: middle; }
+  tbody td:nth-child(1) { text-align: center; font-weight: 700; color: #1D4ED8; }
+  tbody td:nth-child(2) { text-align: left; max-width: 260px; }
+  tbody td:nth-child(3) { text-align: center; color: #64748B; }
+  tbody td:nth-child(6) { font-weight: 700; }
+  tbody td:nth-child(8) { font-weight: 700; color: #1D4ED8; }
+
+  /* TOTALES */
+  .total-row { background: #1E3A5F !important; }
+  .total-row td { color: white !important; font-weight: 700 !important; font-size: 11px !important;
+                  padding: 11px 10px !important; border-color: #2D5A8E !important; }
+  .total-row .grand { background: #1D4ED8; font-size: 13px !important; }
+
+  /* NOTA */
+  .nota { margin-top: 16px; padding: 12px 16px; background: #F1F5F9;
+          border-left: 3px solid #1E3A5F; border-radius: 4px; font-size: 9px; color: #64748B; line-height: 1.6; }
+  .nota strong { color: #1E3A5F; }
+
+  /* FOOTER */
+  .footer { margin-top: 20px; text-align: center; font-size: 9px; color: #94A3B8; padding-top: 12px;
+            border-top: 1px solid #E2E8F0; }
+
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .page { padding: 16px; }
+    .no-print { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <!-- Botón imprimir (solo en pantalla) -->
+  <div class="no-print" style="text-align:right; margin-bottom:16px;">
+    <button onclick="window.print()" style="background:#1E3A5F;color:white;border:none;padding:10px 24px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">
+      🖨️ Guardar / Imprimir PDF
+    </button>
+  </div>
+
+  <!-- Cabecera -->
+  <div class="header">
+    <h1>🪵 Santa Lucía Muebles y Pisos S.A.S.</h1>
+    <p>Informe de Cobro — Pendiente por Facturar</p>
+  </div>
+  <div class="subheader">
+    <div class="info-item"><span class="info-label">Constructora</span><span class="info-value">${payload.constructora || '—'}</span></div>
+    <div class="info-item"><span class="info-label">Proyecto / Obra</span><span class="info-value">${payload.proyecto || '—'}</span></div>
+    <div class="info-item"><span class="info-label">Contrato</span><span class="info-value">#${payload.contrato || '—'} (${payload.tipo || '—'})</span></div>
+    <div class="info-item"><span class="info-label">Fecha</span><span class="info-value">${payload.fecha || new Date().toLocaleDateString('es-CO')}</span></div>
+    <div class="info-item"><span class="info-label">NIT</span><span class="info-value">900.602.879-5</span></div>
+  </div>
+
+  <!-- Tabla -->
+  <table>
+    <thead>
+      <tr>
+        <th>Ref</th><th style="text-align:left">Descripción</th><th>UM</th>
+        <th>Despachado</th><th>Facturado</th><th>X Facturar</th>
+        <th>Vr. Unitario</th><th>Total a Cobrar</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${pendientes.map((it, i) => `
+      <tr>
+        <td>${it.ref}</td>
+        <td style="text-align:left">${it.descripcion}</td>
+        <td>${it.unidad}</td>
+        <td>${Number(it.despachado).toLocaleString('es-CO')}</td>
+        <td>${Number(it.facturado).toLocaleString('es-CO')}</td>
+        <td>${Number(it.xFact).toLocaleString('es-CO')}</td>
+        <td>${fmt2(it.vrUnit)}</td>
+        <td>${fmt2(it.totalFact)}</td>
+      </tr>`).join('')}
+    </tbody>
+    <tr class="total-row">
+      <td colspan="5" style="text-align:right">TOTAL PENDIENTE POR FACTURAR</td>
+      <td>${totalXFact.toLocaleString('es-CO')}</td>
+      <td></td>
+      <td class="grand">${fmt2(totalCobro)}</td>
+    </tr>
+  </table>
+
+  <!-- Nota -->
+  <div class="nota">
+    <strong>Nota:</strong> Los valores relacionados corresponden al suministro <strong>sin IVA</strong>.
+    El IVA del 19% será discriminado en la factura electrónica correspondiente.<br>
+    Santa Lucía Muebles y Pisos S.A.S. · NIT 900.602.879-5 · Tel: 311.341.04.58 · cesarbeta@gmail.com
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    Documento generado el ${new Date().toLocaleDateString('es-CO', {weekday:'long',year:'numeric',month:'long',day:'numeric'})}
+  </div>
+</div>
+</body>
+</html>`
+
+    const ventana = window.open('', '_blank', 'width=960,height=700')
+    if (ventana) {
+      ventana.document.write(html)
+      ventana.document.close()
+      toast('Informe abierto — usa el botón para guardar como PDF', 'ok')
+    } else {
+      toast('Permite ventanas emergentes para generar el PDF', 'err')
     }
   }
 
