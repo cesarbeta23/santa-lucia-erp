@@ -26,7 +26,8 @@ const ROLES = {
   FA: 'facturacion',   // asistente de facturación — todo menos configuración
   SV: 'supervisor',    // supervisores — todo menos facturación y contratos
   CO: 'contratos',     // asistente de contratos — todo menos configuración
-  PR: 'produccion',    // jefe y auxiliar de producción — pedidos, producción, despachos
+  PR: 'produccion',    // jefe y auxiliar de producción — producción y despachos; pedidos solo ver
+  AL: 'almacen',       // almacén — pedidos y compras; producción y despachos solo ver
 }
 const TODOS_MENOS_FACT = ['superadmin', 'facturacion', 'contratos', 'supervisor']
 const CON_FACT = ['superadmin', 'facturacion', 'contratos']   // también ven el módulo Contratos
@@ -51,9 +52,9 @@ const MODULES = [
   {
     section: 'Operativo',
     items: [
-      { key: 'pedidos',      label: 'Pedidos',         icon: '📦', roles: [...TODOS_MENOS_FACT, 'produccion'] },
-      { key: 'produccion',   label: 'Producción',      icon: '🔨', roles: [...TODOS_MENOS_FACT, 'produccion'] },
-      { key: 'despachos',    label: 'Despachos',       icon: '🚚', roles: [...TODOS_MENOS_FACT, 'produccion'] },
+      { key: 'pedidos',      label: 'Pedidos',         icon: '📦', roles: [...TODOS_MENOS_FACT, 'produccion', 'almacen'] },
+      { key: 'produccion',   label: 'Producción',      icon: '🔨', roles: [...TODOS_MENOS_FACT, 'produccion', 'almacen'] },
+      { key: 'despachos',    label: 'Despachos',       icon: '🚚', roles: [...TODOS_MENOS_FACT, 'produccion', 'almacen'] },
       { key: 'instalacion',  label: 'Instalación',     icon: '🔧', roles: TODOS_MENOS_FACT },
       { key: 'adicionales',  label: 'Adicionales',     icon: '➕', roles: TODOS_MENOS_FACT },
     ],
@@ -71,6 +72,17 @@ const MODULES = [
     ],
   },
 ]
+
+// Roles que NO ven valores de compra (precios de pedidos)
+const SIN_VALORES_COMPRA = ['produccion']
+// Roles que NO ven el valor de los contratos con la constructora
+const SIN_VALOR_CONTRATO = ['produccion', 'almacen']
+
+// Módulos que el rol puede VER pero no modificar
+const SOLO_LECTURA = {
+  produccion: ['pedidos'],
+  almacen:    ['produccion', 'despachos'],
+}
 
 const modulosDe = rol => MODULES.flatMap(sec => sec.items).filter(it => it.roles.includes(rol)).map(it => it.key)
 
@@ -360,6 +372,8 @@ export default function App() {
   // ── Navegación entre módulos (ej: desde el dashboard del proyecto) ──
   const permitidos = modulosDe(user.rol)
   const puedeIr = key => permitidos.includes(key)
+  // ¿Puede crear, editar o eliminar en ese módulo?
+  const puedeEditar = key => puedeIr(key) && !(SOLO_LECTURA[user.rol] || []).includes(key)
 
   function irA(key, params = null) {
     if (!puedeIr(key)) { toast('No tienes acceso a ese módulo', 'err'); return }
@@ -377,7 +391,9 @@ export default function App() {
 
   const shared = {
     user, dbData, setDbData, toast, reload: loadAll, loading,
-    ROLES, nav, irA, puedeIr,
+    ROLES, nav, irA, puedeIr, puedeEditar,
+    verValoresCompra:  !SIN_VALORES_COMPRA.includes(user.rol),
+    verValorContrato:  !SIN_VALOR_CONTRATO.includes(user.rol),
   }
 
   const pages = {

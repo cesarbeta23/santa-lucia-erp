@@ -72,7 +72,9 @@ Responde SOLO con JSON válido sin texto adicional:
   return JSON.parse(raw.slice(ini, fin))
 }
 
-export default function Pedidos({ dbData, setDbData, toast, nav, irA }) {
+export default function Pedidos({ dbData, setDbData, toast, nav, irA, puedeEditar, verValoresCompra = true }) {
+  const editable = puedeEditar ? puedeEditar('pedidos') : true
+  const verVr    = verValoresCompra
   const { pedidos = [], items_pedido = [], proyectos = [], constructoras = [], items_despacho = [], despachos = [], proveedores = [] } = dbData
   const navPedido = nav?.pedidoId ? pedidos.find(p => p.id === nav.pedidoId) : null
 
@@ -323,22 +325,22 @@ export default function Pedidos({ dbData, setDbData, toast, nav, irA }) {
             </div>
           </div>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-            <Btn onClick={() => { setItemsManual(items.length ? items.map(i => ({ ref: i.ref||'', descripcion: i.descripcion||i.material||'', unidad: i.unidad||'UND', cantidad: i.cantidad_pedida||'', vr_unitario: i.vr_unitario||'' })) : [{ ref: '', descripcion: '', unidad: 'UND', cantidad: '', vr_unitario: '' }]); setModalManual(true) }}>
+            {editable && <Btn onClick={() => { setItemsManual(items.length ? items.map(i => ({ ref: i.ref||'', descripcion: i.descripcion||i.material||'', unidad: i.unidad||'UND', cantidad: i.cantidad_pedida||'', vr_unitario: i.vr_unitario||'' })) : [{ ref: '', descripcion: '', unidad: 'UND', cantidad: '', vr_unitario: '' }]); setModalManual(true) }}>
               ✏️ Manual
-            </Btn>
-            <Btn onClick={() => abrirModalItems(pedidoSel)}>
+            </Btn>}
+            {editable && <Btn onClick={() => abrirModalItems(pedidoSel)}>
               📎 Cargar PDF
-            </Btn>
-            <Btn onClick={() => openEdit(pedidoSel)}>Editar</Btn>
+            </Btn>}
+            {editable && <Btn onClick={() => openEdit(pedidoSel)}>Editar</Btn>}
           </div>
         </div>
 
         {/* Stats */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
           <div style={{ ...card, padding: '12px 16px' }}>
-            <div style={{ fontSize: 11, color: C.g4, marginBottom: 4 }}>Total pedido (con IVA)</div>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>{fmt(totalConIvaPedido)}</div>
-            <div style={{ fontSize: 11, color: C.g5 }}>{items.length} referencias · sin IVA: {fmt(totalPedido)}</div>
+            <div style={{ fontSize: 11, color: C.g4, marginBottom: 4 }}>{verVr ? 'Total pedido (con IVA)' : 'Referencias'}</div>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>{verVr ? fmt(totalConIvaPedido) : items.length}</div>
+            <div style={{ fontSize: 11, color: C.g5 }}>{verVr ? `${items.length} referencias · sin IVA: ${fmt(totalPedido)}` : 'del pedido'}</div>
           </div>
           <div style={{ ...card, padding: '12px 16px' }}>
             <div style={{ fontSize: 11, color: C.g4, marginBottom: 4 }}>Recibido</div>
@@ -360,13 +362,13 @@ export default function Pedidos({ dbData, setDbData, toast, nav, irA }) {
 
         {items.length === 0 ? (
           <Empty icon="📦" title="Sin ítems" desc="Carga el PDF del pedido para extraer los productos automáticamente."
-            action={<Btn variant="primary" onClick={() => abrirModalItems(pedidoSel)}>📎 Cargar pedido (PDF/JPG)</Btn>} />
+            action={editable ? <Btn variant="primary" onClick={() => abrirModalItems(pedidoSel)}>📎 Cargar pedido (PDF/JPG)</Btn> : null} />
         ) : (
           <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ background: C.g0 }}>
-                  {['Ref','Descripción','UM','Pedido','Recibido','Pendiente','Vr. Neto','Acciones'].map((h,i) => (
+                  {['Ref','Descripción','UM','Pedido','Recibido','Pendiente', ...(verVr ? ['Vr. Neto'] : []), 'Acciones'].map((h,i) => (
                     <th key={i} style={{ padding: '10px 12px', textAlign: i > 2 && i < 7 ? 'right' : 'left', fontSize: 11, fontWeight: 700, color: C.g5, textTransform: 'uppercase', letterSpacing: '.06em', borderBottom: `2px solid ${C.g2}` }}>{h}</th>
                   ))}
                 </tr>
@@ -385,9 +387,9 @@ export default function Pedidos({ dbData, setDbData, toast, nav, irA }) {
                       <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600 }}>{ped.toLocaleString('es-CO')}</td>
                       <td style={{ padding: '9px 12px', textAlign: 'right', color: C.gnD, fontWeight: 600 }}>{rec.toLocaleString('es-CO')}</td>
                       <td style={{ padding: '9px 12px', textAlign: 'right', color: pend > 0 ? C.am : C.gnD, fontWeight: 600 }}>{pend.toLocaleString('es-CO')}</td>
-                      <td style={{ padding: '9px 12px', textAlign: 'right' }}>{fmt(item.vr_unitario)}</td>
+                      {verVr && <td style={{ padding: '9px 12px', textAlign: 'right' }}>{fmt(item.vr_unitario)}</td>}
                       <td style={{ padding: '9px 12px' }}>
-                        {!completo && (
+                        {!completo && editable && (
                           <Btn size="sm" variant="success" onClick={() => abrirIngreso(item)}>
                             + Ingreso
                           </Btn>
@@ -410,19 +412,19 @@ export default function Pedidos({ dbData, setDbData, toast, nav, irA }) {
                   <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 700, color: C.am }}>
                     {items.reduce((s,i) => s + Math.max(0, Number(i.cantidad_pedida||0) - cantRecibida(i.id)), 0).toLocaleString('es-CO')}
                   </td>
-                  <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600 }}>{fmt(totalPedido)}</td>
+                  {verVr && <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600 }}>{fmt(totalPedido)}</td>}
                   <td />
                 </tr>
-                <tr style={{ background: C.g0 }}>
+                {verVr && <tr style={{ background: C.g0 }}>
                   <td colSpan={6} style={{ padding: '9px 12px', fontWeight: 600, textAlign: 'right', color: C.g5 }}>IVA 19%</td>
                   <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600, color: C.g5 }}>{fmt(ivaPedido)}</td>
                   <td />
-                </tr>
-                <tr style={{ background: C.g0, borderTop: `1px solid ${C.g2}` }}>
+                </tr>}
+                {verVr && <tr style={{ background: C.g0, borderTop: `1px solid ${C.g2}` }}>
                   <td colSpan={6} style={{ padding: '10px 12px', fontWeight: 800, textAlign: 'right' }}>TOTAL CON IVA</td>
                   <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: C.gnD, fontSize: 15 }}>{fmt(totalConIvaPedido)}</td>
                   <td />
-                </tr>
+                </tr>}
               </tfoot>
             </table>
           </div>
@@ -600,7 +602,7 @@ export default function Pedidos({ dbData, setDbData, toast, nav, irA }) {
   return (
     <div>
       <SectionHeader title="Pedidos de materiales">
-        <Btn variant="primary" onClick={openNew}>+ Nuevo pedido</Btn>
+        {editable && <Btn variant="primary" onClick={openNew}>+ Nuevo pedido</Btn>}
       </SectionHeader>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
@@ -613,7 +615,7 @@ export default function Pedidos({ dbData, setDbData, toast, nav, irA }) {
 
       {filtered.length === 0 ? (
         <Empty icon="📦" title="Sin pedidos" desc="Registra el primer pedido de materiales para un proyecto."
-          action={<Btn variant="primary" onClick={openNew}>+ Nuevo pedido</Btn>} />
+          action={editable ? <Btn variant="primary" onClick={openNew}>+ Nuevo pedido</Btn> : null} />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {filtered.map(p => {
@@ -647,13 +649,13 @@ export default function Pedidos({ dbData, setDbData, toast, nav, irA }) {
                   <Progress value={pct} />
                 </div>
                 <div style={{ textAlign: 'right', minWidth: 140 }}>
-                  <div style={{ fontSize: 18, fontWeight: 800 }}>
+                  {verVr && <div style={{ fontSize: 18, fontWeight: 800 }}>
                     {fmt(items.reduce((s,i) => s + Number(i.cantidad_pedida||0)*Number(i.vr_unitario||0), 0))}
-                  </div>
+                  </div>}
                   <div style={{ fontSize: 12, color: C.g5, marginBottom: 8 }}>{Math.round(pct)}% recibido</div>
                   <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
-                    <Btn size="sm" onClick={() => openEdit(p)}>Editar</Btn>
-                    <Btn size="sm" variant="danger" onClick={() => setDelId(p.id)}>Eliminar</Btn>
+                    {editable && <Btn size="sm" onClick={() => openEdit(p)}>Editar</Btn>}
+                    {editable && <Btn size="sm" variant="danger" onClick={() => setDelId(p.id)}>Eliminar</Btn>}
                   </div>
                 </div>
               </div>

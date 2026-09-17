@@ -7,7 +7,8 @@ const ESTADOS_REM = {
   parcial:   { label: 'Parcial',   color: 'amber' },
 }
 
-export default function Despachos({ dbData, setDbData, toast, user, nav, irA }) {
+export default function Despachos({ dbData, setDbData, toast, user, nav, irA, puedeEditar, verValorContrato = true }) {
+  const editable = puedeEditar ? puedeEditar('despachos') : true
   const {
     proyectos = [], constructoras = [], contratos = [],
     items_contrato = [], remisiones = [], items_remision = [],
@@ -399,13 +400,13 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA }) 
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 16 }}>{tipoLabel} {contrato.numero ? `#${contrato.numero}` : ''}</div>
                     <div style={{ fontSize: 13, color: C.g5, marginTop: 4 }}>
-                      {fmt(contrato.valor_total)} · {itsContr.length} ítems · {remisContr.length} remisión(es)
+                      {verValorContrato ? `${fmt(contrato.valor_total)} · ` : ''}{itsContr.length} ítems · {remisContr.length} remisión(es)
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                     <div style={{ width: 140 }}><Progress value={pct} /></div>
                     <span style={{ fontSize: 12, color: C.g5 }}>{Math.round(pct)}% despachado</span>
-                    <Btn variant="primary" onClick={() => abrirNuevaRemision(contrato)}>+ Nueva remisión</Btn>
+                    {editable && <Btn variant="primary" onClick={() => abrirNuevaRemision(contrato)}>+ Nueva remisión</Btn>}
                   </div>
                 </div>
 
@@ -499,9 +500,9 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA }) 
                                   </td>
                                   <td style={{ padding: '10px 12px' }} onClick={e => e.stopPropagation()}>
                                     <div style={{ display: 'flex', gap: 5 }}>
-                                      <Btn size="sm" onClick={() => { setRemSel(rem); setItemsControl([{ descripcion: '', unidad: 'und', cantidad: '' }]); setModalControl(true) }}>+ Control</Btn>
-                                      <Btn size="sm" onClick={() => abrirEditarRemision(rem)}>Editar</Btn>
-                                      <Btn size="sm" variant="danger" onClick={() => eliminarRemision(rem.id)}>Eliminar</Btn>
+                                      {editable && <Btn size="sm" onClick={() => { setRemSel(rem); setItemsControl([{ descripcion: '', unidad: 'und', cantidad: '' }]); setModalControl(true) }}>+ Control</Btn>}
+                                      {editable && <Btn size="sm" onClick={() => abrirEditarRemision(rem)}>Editar</Btn>}
+                                      {editable && <Btn size="sm" variant="danger" onClick={() => eliminarRemision(rem.id)}>Eliminar</Btn>}
                                     </div>
                                   </td>
                                 </tr>

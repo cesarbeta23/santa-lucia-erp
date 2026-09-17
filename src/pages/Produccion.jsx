@@ -8,7 +8,8 @@ const ESTADOS_LOTE = {
   completado:  { label: 'Completado',  color: 'green'  },
 }
 
-export default function Produccion({ dbData, setDbData, toast, nav, irA }) {
+export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEditar, verValorContrato = true }) {
+  const editable = puedeEditar ? puedeEditar('produccion') : true
   const {
     proyectos = [], constructoras = [], contratos = [],
     items_contrato = [], lotes_produccion = [], items_lote = [],
@@ -260,19 +261,19 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA }) {
           {nav?.desde === 'proyecto' && irA && <Btn variant="primary" onClick={() => irA('proyectos', { proyectoId: nav.proyectoId })}>← Volver al proyecto</Btn>}
           <div>
             <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>{tipo} {contratoSel.numero ? `#${contratoSel.numero}` : ''}</h1>
-            <div style={{ fontSize: 13, color: C.g5 }}>{proySel?.nombre} · {fmt(contratoSel.valor_total)}</div>
+            <div style={{ fontSize: 13, color: C.g5 }}>{proySel?.nombre}{verValorContrato ? ` · ${fmt(contratoSel.valor_total)}` : ''}</div>
           </div>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-            <Btn onClick={() => setModalLotes(true)}>
+            {editable && <Btn onClick={() => setModalLotes(true)}>
               {lotes.length ? '🔄 Regenerar lotes' : '⚙️ Definir lotes'}
-            </Btn>
+            </Btn>}
           </div>
         </div>
 
         {lotes.length === 0 ? (
           <Empty icon="🏭" title="Sin lotes definidos"
             desc="Define cuántos lotes de producción tiene este contrato para dividir las cantidades automáticamente."
-            action={<Btn variant="primary" onClick={() => setModalLotes(true)}>⚙️ Definir lotes</Btn>} />
+            action={editable ? <Btn variant="primary" onClick={() => setModalLotes(true)}>⚙️ Definir lotes</Btn> : null} />
         ) : (
           <div>
             {/* Resumen de lotes */}
@@ -293,11 +294,11 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA }) {
                       <span>{nRem} rem.</span>
                     </div>
                     <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
-                      {lote.estado !== 'en_proceso' && lote.estado !== 'completado' &&
+                      {editable && lote.estado !== 'en_proceso' && lote.estado !== 'completado' &&
                         <Btn size="sm" onClick={() => cambiarEstado(lote.id, 'en_proceso')}>▶ Iniciar</Btn>}
-                      {lote.estado === 'en_proceso' &&
+                      {editable && lote.estado === 'en_proceso' &&
                         <Btn size="sm" variant="success" onClick={() => pedirCierre(lote)}>✓ Completar</Btn>}
-                      {lote.estado === 'completado' &&
+                      {editable && lote.estado === 'completado' &&
                         <Btn size="sm" onClick={() => cambiarEstado(lote.id, 'en_proceso')}>↩ Reabrir</Btn>}
                     </div>
                   </div>
@@ -366,9 +367,9 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA }) {
                                 </div>
                               ) : (
                                 <div>
-                                  <span onClick={() => setEditando(ed => ({ ...ed, [key]: String(cant) }))}
-                                    title="Clic para editar"
-                                    style={{ cursor: 'pointer', fontWeight: cant > 0 ? 600 : 400, color: cant > 0 ? C.bk : C.g3, borderBottom: '1px dashed #C7C7CC', paddingBottom: 1 }}>
+                                  <span onClick={() => editable && setEditando(ed => ({ ...ed, [key]: String(cant) }))}
+                                    title={editable ? 'Clic para editar' : ''}
+                                    style={{ cursor: editable ? 'pointer' : 'default', fontWeight: cant > 0 ? 600 : 400, color: cant > 0 ? C.bk : C.g3, borderBottom: '1px dashed #C7C7CC', paddingBottom: 1 }}>
                                     {cant > 0 ? cant.toLocaleString('es-CO') : '—'}
                                   </span>
                                   {lleno ? (
@@ -554,7 +555,7 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA }) {
                         {c.tipo === 'suministro' ? '📦' : '📋'} {c.tipo === 'suministro' ? 'Suministro' : 'Todo Costo'}
                         {c.numero ? ` #${c.numero}` : ''}
                       </span>
-                      <span style={{ fontSize: 12, color: C.g5, marginLeft: 12 }}>{fmt(c.valor_total)}</span>
+                      {verValorContrato && <span style={{ fontSize: 12, color: C.g5, marginLeft: 12 }}>{fmt(c.valor_total)}</span>}
                     </div>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       {lotes.length > 0 ? (
