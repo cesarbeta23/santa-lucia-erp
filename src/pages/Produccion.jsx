@@ -8,16 +8,20 @@ const ESTADOS_LOTE = {
   completado:  { label: 'Completado',  color: 'green'  },
 }
 
-export default function Produccion({ dbData, setDbData, toast }) {
+export default function Produccion({ dbData, setDbData, toast, nav, irA }) {
   const {
     proyectos = [], constructoras = [], contratos = [],
     items_contrato = [], lotes_produccion = [], items_lote = [],
     remisiones = [], items_remision = [],
   } = dbData
 
-  const [vista, setVista]           = useState('lista')   // lista | proyecto | contrato
-  const [proySel, setProySel]       = useState(null)
-  const [contratoSel, setContratoSel] = useState(null)
+  // Si viene desde el dashboard del proyecto, abrir directo
+  const navContr = nav?.contratoId ? contratos.find(c => c.id === nav.contratoId) : null
+  const navProy  = proyectos.find(p => p.id === (navContr?.proyecto_id || nav?.proyectoId)) || null
+  const [vista, setVista]           = useState(navContr ? 'contrato' : navProy ? 'proyecto' : 'lista')   // lista | proyecto | contrato
+  const [proySel, setProySel]       = useState(navProy)
+  const [contratoSel, setContratoSel] = useState(navContr)
+  const [modalCierre, setModalCierre] = useState(null)   // lote que se va a completar
   const [modalLotes, setModalLotes] = useState(false)
   const [nLotes, setNLotes]         = useState(4)
   const [editando, setEditando]     = useState({})        // { loteId_itemId: valor }
@@ -29,6 +33,12 @@ export default function Produccion({ dbData, setDbData, toast }) {
     remisiones
       .filter(r => r.lote_id === loteId)
       .flatMap(r => items_remision.filter(i => i.remision_id === r.id && i.item_contrato_id === itemContratoId))
+      .reduce((s, i) => s + Number(i.cantidad || 0), 0)
+
+  // Despachado total del ítem (todas las remisiones, con o sin lote)
+  const cantDespTotal = (itemContratoId) =>
+    items_remision
+      .filter(i => i.item_contrato_id === itemContratoId)
       .reduce((s, i) => s + Number(i.cantidad || 0), 0)
 
   const lotesContrato = (cid) =>
@@ -158,6 +168,85 @@ export default function Produccion({ dbData, setDbData, toast }) {
     } catch (e) { toast('Error: ' + e.message, 'err') }
   }
 
+  // ── Completar lote (con opción de pasar saldo al siguiente) ──
+  // Saldo = plan del lote − despachado con ese lote.
+  //  · Si faltó (saldo > 0): el lote queda con lo despachado y lo que faltó se suma al siguiente lote abierto.
+  //  · Si se mandó de más (saldo < 0): el lote queda con lo despachado y el exceso se descuenta de los siguientes.
+  function saldosLote(lote) {
+    return itemsLote(lote.id).map(il => {
+      const plan = Number(il.cantidad || 0)
+      const desp = cantDespLote(lote.id, il.item_contrato_id)
+      return { il, plan, desp, saldo: plan - desp, it: items_contrato.find(x => x.id === il.item_contrato_id) }
+    }).filter(x => x.saldo !== 0)
+  }
+
+  function siguientesAbiertos(lote) {
+    return lotesContrato(lote.contrato_id).filter(l => l.numero > lote.numero && l.estado !== 'completado')
+  }
+
+  function pedirCierre(lote) {
+    if (saldosLote(lote).length === 0) { cambiarEstado(lote.id, 'completado'); return }
+    setModalCierre(lote)
+  }
+
+  async function completarLote(lote, pasarSaldo) {
+    setSaving(true)
+    try {
+      if (pasarSaldo) {
+        const sigs = siguientesAbiertos(lote)
+        const cambios = {}      // items_lote.id → nueva cantidad
+        const nuevos  = []      // filas items_lote que no existen en lotes siguientes
+        const cantDe = (loteId, itemId) => {
+          const il = items_lote.find(i => i.lote_id === loteId && i.item_contrato_id === itemId)
+          if (!il) return { il: null, cant: 0 }
+          return { il, cant: cambios[il.id] ?? Number(il.cantidad || 0) }
+        }
+        for (const s of saldosLote(lote)) {
+          cambios[s.il.id] = s.desp
+          const itemId = s.il.item_contrato_id
+          if (s.saldo > 0) {
+            const { il, cant } = cantDe(sigs[0].id, itemId)
+            if (il) cambios[il.id] = cant + s.saldo
+            else nuevos.push({ lote_id: sigs[0].id, item_contrato_id: itemId, cantidad: s.saldo })
+          } else {
+            let exceso = -s.saldo
+            for (const sl of sigs) {
+              if (exceso <= 0) break
+              const { il, cant } = cantDe(sl.id, itemId)
+              if (!il || cant <= 0) continue
+              const quita = Math.min(exceso, cant)
+              cambios[il.id] = cant - quita
+              exceso -= quita
+            }
+          }
+        }
+        const actualizados = []
+        for (const [id, cantidad] of Object.entries(cambios)) {
+          const { data, error } = await supabase.from('items_lote').update({ cantidad }).eq('id', id).select().single()
+          if (error) throw error
+          actualizados.push(data)
+        }
+        const insertados = []
+        for (const n of nuevos) {
+          const { data, error } = await supabase.from('items_lote').insert(n).select().single()
+          if (error) throw error
+          insertados.push(data)
+        }
+        setDbData(d => ({
+          ...d,
+          items_lote: [
+            ...d.items_lote.map(i => actualizados.find(a => a.id === i.id) || i),
+            ...insertados,
+          ],
+        }))
+      }
+      await cambiarEstado(lote.id, 'completado')
+      toast(pasarSaldo ? `${lote.nombre} completado y saldo trasladado` : `${lote.nombre} completado`, 'ok')
+      setModalCierre(null)
+    } catch (e) { toast('Error: ' + e.message, 'err') }
+    setSaving(false)
+  }
+
   // ── Vista contrato — cuadro de lotes ─────────────────────
   const renderContrato = () => {
     const itsContr = items_contrato.filter(i => i.contrato_id === contratoSel.id)
@@ -168,6 +257,7 @@ export default function Produccion({ dbData, setDbData, toast }) {
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
           <Btn onClick={() => { setVista('proyecto'); setContratoSel(null) }}>← {proySel?.nombre}</Btn>
+          {nav?.desde === 'proyecto' && irA && <Btn variant="primary" onClick={() => irA('proyectos', { proyectoId: nav.proyectoId })}>← Volver al proyecto</Btn>}
           <div>
             <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>{tipo} {contratoSel.numero ? `#${contratoSel.numero}` : ''}</h1>
             <div style={{ fontSize: 13, color: C.g5 }}>{proySel?.nombre} · {fmt(contratoSel.valor_total)}</div>
@@ -206,7 +296,7 @@ export default function Produccion({ dbData, setDbData, toast }) {
                       {lote.estado !== 'en_proceso' && lote.estado !== 'completado' &&
                         <Btn size="sm" onClick={() => cambiarEstado(lote.id, 'en_proceso')}>▶ Iniciar</Btn>}
                       {lote.estado === 'en_proceso' &&
-                        <Btn size="sm" variant="success" onClick={() => cambiarEstado(lote.id, 'completado')}>✓ Completar</Btn>}
+                        <Btn size="sm" variant="success" onClick={() => pedirCierre(lote)}>✓ Completar</Btn>}
                       {lote.estado === 'completado' &&
                         <Btn size="sm" onClick={() => cambiarEstado(lote.id, 'en_proceso')}>↩ Reabrir</Btn>}
                     </div>
@@ -237,6 +327,8 @@ export default function Produccion({ dbData, setDbData, toast }) {
                     ))}
                     <th style={{ padding: '9px 10px', textAlign: 'right', color: '#93C5FD', fontSize: 10, fontWeight: 700, borderLeft: '1px solid #2D5A8E' }}>TOTAL PLAN</th>
                     <th style={{ padding: '9px 10px', textAlign: 'right', color: '#93C5FD', fontSize: 10, fontWeight: 700 }}>DIFERENCIA</th>
+                    <th style={{ padding: '9px 10px', textAlign: 'right', color: '#86EFAC', fontSize: 10, fontWeight: 700, borderLeft: '2px solid #2D5A8E' }}>DESPACHADO</th>
+                    <th style={{ padding: '9px 10px', textAlign: 'right', color: '#FDBA74', fontSize: 10, fontWeight: 700 }}>FALTA DESPACHAR</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -246,7 +338,9 @@ export default function Produccion({ dbData, setDbData, toast }) {
                       const il = items_lote.find(i => i.lote_id === l.id && i.item_contrato_id === it.id)
                       return s + Number(il?.cantidad || 0)
                     }, 0)
-                    const diff = totalPlan - contratado
+                    const diff      = totalPlan - contratado
+                    const despTotal = cantDespTotal(it.id)
+                    const falta     = contratado - despTotal
                     return (
                       <tr key={it.id} style={{ borderBottom: `1px solid ${C.g1}`, background: idx % 2 === 0 ? 'white' : C.g0 }}>
                         <td style={{ padding: '8px 12px', fontWeight: 700, color: '#1D4ED8', position: 'sticky', left: 0, background: idx % 2 === 0 ? 'white' : C.g0 }}>{it.ref}</td>
@@ -259,8 +353,9 @@ export default function Produccion({ dbData, setDbData, toast }) {
                           const desp   = il ? cantDespLote(l.id, it.id) : 0
                           const key    = il?.id || `${l.id}_${it.id}`
                           const editVal = editando[key]
+                          const lleno   = cant > 0 && desp >= cant
                           return (
-                            <td key={l.id} style={{ padding: '6px 8px', textAlign: 'center', borderLeft: `1px solid ${C.g1}` }}>
+                            <td key={l.id} style={{ padding: '6px 8px', textAlign: 'center', borderLeft: `1px solid ${C.g1}`, background: lleno ? '#DCFCE7' : undefined }}>
                               {editVal !== undefined ? (
                                 <div style={{ display: 'flex', gap: 3, justifyContent: 'center' }}>
                                   <input type="number" value={editVal}
@@ -276,8 +371,12 @@ export default function Produccion({ dbData, setDbData, toast }) {
                                     style={{ cursor: 'pointer', fontWeight: cant > 0 ? 600 : 400, color: cant > 0 ? C.bk : C.g3, borderBottom: '1px dashed #C7C7CC', paddingBottom: 1 }}>
                                     {cant > 0 ? cant.toLocaleString('es-CO') : '—'}
                                   </span>
-                                  {desp > 0 && (
-                                    <div style={{ fontSize: 10, color: C.gnD, marginTop: 2 }}>✓ {desp.toLocaleString('es-CO')} desp.</div>
+                                  {lleno ? (
+                                    <div style={{ fontSize: 10, color: C.gnD, marginTop: 2, fontWeight: 700 }}>
+                                      ✓ {desp > cant ? `${desp.toLocaleString('es-CO')} desp. (+${(desp - cant).toLocaleString('es-CO')})` : 'completo'}
+                                    </div>
+                                  ) : desp > 0 && (
+                                    <div style={{ fontSize: 10, color: C.am, marginTop: 2 }}>{desp.toLocaleString('es-CO')}/{cant.toLocaleString('es-CO')} desp.</div>
                                   )}
                                 </div>
                               )}
@@ -289,6 +388,14 @@ export default function Produccion({ dbData, setDbData, toast }) {
                         </td>
                         <td style={{ padding: '8px 10px', textAlign: 'right', fontSize: 11, color: diff === 0 ? C.gnD : diff > 0 ? C.am : C.rd }}>
                           {diff === 0 ? '✓' : diff > 0 ? `+${diff}` : `${diff}`}
+                        </td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, borderLeft: `2px solid ${C.g2}`, color: despTotal > 0 ? C.gnD : C.g3 }}>
+                          {despTotal > 0 ? despTotal.toLocaleString('es-CO') : '—'}
+                        </td>
+                        <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700,
+                          color: falta === 0 ? C.gnD : falta < 0 ? C.rd : C.or,
+                          background: falta === 0 ? '#DCFCE7' : falta < 0 ? '#FEE2E2' : '#FFF7ED' }}>
+                          {falta === 0 ? '✓ Completo' : falta < 0 ? `Exceso ${Math.abs(falta).toLocaleString('es-CO')}` : falta.toLocaleString('es-CO')}
                         </td>
                       </tr>
                     )
@@ -308,12 +415,82 @@ export default function Produccion({ dbData, setDbData, toast }) {
                     <td colSpan={2} style={{ padding: '9px 10px', color: 'white', textAlign: 'right', borderLeft: '1px solid #2D5A8E' }}>
                       {items_lote.filter(i => lotes.some(l => l.id === i.lote_id)).reduce((s,i) => s+Number(i.cantidad||0), 0).toLocaleString('es-CO')}
                     </td>
+                    {(() => {
+                      const totC = itsContr.reduce((s, it) => s + Number(it.cantidad || 0), 0)
+                      const totD = itsContr.reduce((s, it) => s + cantDespTotal(it.id), 0)
+                      const totF = totC - totD
+                      return <>
+                        <td style={{ padding: '9px 10px', textAlign: 'right', color: '#86EFAC', fontWeight: 700, borderLeft: '2px solid #2D5A8E' }}>
+                          {totD.toLocaleString('es-CO')}
+                        </td>
+                        <td style={{ padding: '9px 10px', textAlign: 'right', color: totF === 0 ? '#86EFAC' : '#FDBA74', fontWeight: 700 }}>
+                          {totF === 0 ? '✓' : totF.toLocaleString('es-CO')}
+                        </td>
+                      </>
+                    })()}
                   </tr>
                 </tfoot>
               </table>
             </div>
           </div>
         )}
+
+        {/* Modal completar lote con saldo */}
+        {modalCierre && (() => {
+          const saldos = saldosLote(modalCierre)
+          const sigs   = siguientesAbiertos(modalCierre)
+          return (
+            <Modal title={`Completar ${modalCierre.nombre}`} onClose={() => setModalCierre(null)} wide>
+              <p style={{ fontSize: 13, color: C.g5, marginBottom: 12 }}>
+                Este lote no cuadra exacto con lo despachado. Revisa las diferencias:
+              </p>
+              <div style={{ ...card, padding: 0, overflow: 'auto', marginBottom: 16 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ background: C.g1 }}>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>REF</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'left' }}>DESCRIPCIÓN</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'right' }}>PLAN</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'right' }}>DESPACHADO</th>
+                      <th style={{ padding: '7px 10px', textAlign: 'right' }}>SALDO</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {saldos.map(s => (
+                      <tr key={s.il.id} style={{ borderTop: `1px solid ${C.g1}` }}>
+                        <td style={{ padding: '6px 10px', fontWeight: 700, color: '#1D4ED8' }}>{s.it?.ref}</td>
+                        <td style={{ padding: '6px 10px' }}>{s.it?.descripcion}</td>
+                        <td style={{ padding: '6px 10px', textAlign: 'right' }}>{s.plan.toLocaleString('es-CO')}</td>
+                        <td style={{ padding: '6px 10px', textAlign: 'right' }}>{s.desp.toLocaleString('es-CO')}</td>
+                        <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: s.saldo > 0 ? C.or : C.rd }}>
+                          {s.saldo > 0 ? `Faltan ${s.saldo.toLocaleString('es-CO')}` : `Exceso ${Math.abs(s.saldo).toLocaleString('es-CO')}`}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {sigs.length > 0 ? (
+                <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#1E3A5F', marginBottom: 16 }}>
+                  Si pasas el saldo: este lote queda con lo que realmente se despachó, lo que faltó se suma a <strong>{sigs[0].nombre}</strong> y los excesos se descuentan de los lotes siguientes.
+                </div>
+              ) : (
+                <div style={{ background: C.rdL, border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: C.rd, marginBottom: 16 }}>
+                  ⚠️ No hay lotes abiertos después de este. El saldo queda pendiente en la columna "Falta despachar".
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <Btn onClick={() => setModalCierre(null)}>Cancelar</Btn>
+                <Btn onClick={() => completarLote(modalCierre, false)} disabled={saving}>Solo completar</Btn>
+                {sigs.length > 0 && (
+                  <Btn variant="primary" onClick={() => completarLote(modalCierre, true)} disabled={saving}>
+                    {saving ? 'Guardando…' : `Completar y pasar saldo a ${sigs[0].nombre}`}
+                  </Btn>
+                )}
+              </div>
+            </Modal>
+          )
+        })()}
 
         {/* Modal definir lotes */}
         {modalLotes && (
@@ -349,6 +526,7 @@ export default function Produccion({ dbData, setDbData, toast }) {
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
           <Btn onClick={() => { setVista('lista'); setProySel(null) }}>← Proyectos</Btn>
+          {nav?.desde === 'proyecto' && irA && <Btn variant="primary" onClick={() => irA('proyectos', { proyectoId: nav.proyectoId })}>← Volver al proyecto</Btn>}
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>🏭 Producción — {proySel.nombre}</h1>
         </div>
         {contrSum.length === 0 ? (

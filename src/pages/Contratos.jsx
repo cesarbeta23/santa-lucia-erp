@@ -79,11 +79,12 @@ Responde SOLO con JSON válido sin texto adicional:
   return JSON.parse(raw.slice(inicio, fin))
 }
 
-export default function Contratos({ dbData, setDbData, toast }) {
+export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
   const { contratos = [], proyectos = [], constructoras = [], items_contrato = [], actas_facturacion = [] } = dbData
+  const navContrato = nav?.contratoId ? contratos.find(c => c.id === nav.contratoId) : null
 
-  const [vista, setVista]             = useState('lista')
-  const [contratoSel, setContratoSel] = useState(null)
+  const [vista, setVista]             = useState(navContrato ? 'detalle' : 'lista')
+  const [contratoSel, setContratoSel] = useState(navContrato || null)
   const [modalContrato, setModalContrato] = useState(false)
   const [modalItems, setModalItems]       = useState(false)
   const [editandoCant, setEditandoCant]   = useState(null)
@@ -266,6 +267,7 @@ export default function Contratos({ dbData, setDbData, toast }) {
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
           <Btn onClick={() => setVista('lista')}>← Contratos</Btn>
+          {nav?.desde === 'proyecto' && irA && <Btn variant="primary" onClick={() => irA('proyectos', { proyectoId: nav.proyectoId })}>← Volver al proyecto</Btn>}
           <div>
             <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>
               {tipo.icon} {tipo.label} — {proyecto?.nombre}

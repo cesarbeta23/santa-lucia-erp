@@ -72,11 +72,12 @@ Responde SOLO con JSON válido sin texto adicional:
   return JSON.parse(raw.slice(ini, fin))
 }
 
-export default function Pedidos({ dbData, setDbData, toast }) {
+export default function Pedidos({ dbData, setDbData, toast, nav, irA }) {
   const { pedidos = [], items_pedido = [], proyectos = [], constructoras = [], items_despacho = [], despachos = [], proveedores = [] } = dbData
+  const navPedido = nav?.pedidoId ? pedidos.find(p => p.id === nav.pedidoId) : null
 
-  const [vista, setVista]           = useState('lista')
-  const [pedidoSel, setPedidoSel]   = useState(null)
+  const [vista, setVista]           = useState(navPedido ? 'detalle' : 'lista')
+  const [pedidoSel, setPedidoSel]   = useState(navPedido || null)
   const [modalPedido, setModalPedido] = useState(false)
   const [modalIngreso, setModalIngreso] = useState(false)
   const [modalItemSel, setModalItemSel] = useState(null)
@@ -312,6 +313,7 @@ export default function Pedidos({ dbData, setDbData, toast }) {
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
           <Btn onClick={() => setVista('lista')}>← Pedidos</Btn>
+          {nav?.desde === 'proyecto' && irA && <Btn variant="primary" onClick={() => irA('proyectos', { proyectoId: nav.proyectoId })}>← Volver al proyecto</Btn>}
           <div>
             <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>
               📦 Pedido {pedidoSel.numero || 'Sin número'} — {proyecto?.nombre}

@@ -57,7 +57,7 @@ Responde SOLO con JSON:
   return JSON.parse(raw.slice(ini, fin))
 }
 
-export default function Facturacion({ dbData, setDbData, toast, user }) {
+export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }) {
   const {
     actas_facturacion = [], items_acta_facturacion = [],
     contratos = [], proyectos = [], constructoras = [],
@@ -65,9 +65,11 @@ export default function Facturacion({ dbData, setDbData, toast, user }) {
   } = dbData
   // Acceso directo a dbData para items_remision (cargado en App.jsx)
 
-  const [vista, setVista]           = useState('global')   // global | proyecto | acta
-  const [proySel, setProySel]       = useState(null)
-  const [actaSel, setActaSel]       = useState(null)
+  const navProy = nav?.proyectoId ? proyectos.find(p => p.id === nav.proyectoId) : null
+  const navActa = nav?.actaId ? actas_facturacion.find(a => a.id === nav.actaId) : null
+  const [vista, setVista]           = useState(navActa && navProy ? 'acta' : navProy ? 'proyecto' : 'global')   // global | proyecto | acta
+  const [proySel, setProySel]       = useState(navProy || null)
+  const [actaSel, setActaSel]       = useState(navActa || null)
   const [modalActa, setModalActa]   = useState(false)
   const [modalItems, setModalItems] = useState(false)
   const [modalManual, setModalManual] = useState(false)
@@ -384,6 +386,7 @@ export default function Facturacion({ dbData, setDbData, toast, user }) {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
             <Btn onClick={() => { setVista('global'); setProySel(null) }}>← Facturación</Btn>
+            {nav?.desde === 'proyecto' && irA && <Btn variant="primary" onClick={() => irA('proyectos', { proyectoId: nav.proyectoId })}>← Volver al proyecto</Btn>}
             <div>
               <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>{proySel.nombre}</h1>
               <div style={{ fontSize: 13, color: C.g5 }}>
@@ -573,6 +576,7 @@ export default function Facturacion({ dbData, setDbData, toast, user }) {
           <div>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 20 }}>
               <Btn onClick={() => { setVista('proyecto'); setActaSel(null) }}>← {proySel?.nombre}</Btn>
+              {nav?.desde === 'proyecto' && irA && <Btn variant="primary" onClick={() => irA('proyectos', { proyectoId: nav.proyectoId })}>← Volver al proyecto</Btn>}
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>Acta {actaSel.numero_acta || '—'}</h1>

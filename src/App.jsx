@@ -264,6 +264,8 @@ export default function App() {
     catch { return null }
   })
   const [view, setView]     = useState('dashboard')
+  const [nav, setNav]       = useState(null)   // { proyectoId, contratoId, pedidoId, actaId, remisionId, desde }
+  const [navKey, setNavKey] = useState(0)      // fuerza a remontar la página al navegar
   const [toasts, setToasts] = useState([])
   const [dbData, setDbData] = useState({
     constructoras: [], proyectos: [], contratos: [],
@@ -322,9 +324,27 @@ export default function App() {
   if (!user) return <Login onLogin={login} />
 
   // Props compartidas a todas las páginas
+  // ── Navegación entre módulos (ej: desde el dashboard del proyecto) ──
+  const puedeIr = key =>
+    MODULES.some(sec => sec.items.some(it => it.key === key && it.roles.includes(user.rol)))
+
+  function irA(key, params = null) {
+    if (!puedeIr(key)) { toast('No tienes acceso a ese módulo', 'err'); return }
+    setNav(params)
+    setView(key)
+    setNavKey(k => k + 1)
+  }
+
+  // Clic en el menú lateral: entra al módulo limpio
+  function irMenu(key) {
+    setNav(null)
+    setView(key)
+    setNavKey(k => k + 1)
+  }
+
   const shared = {
     user, dbData, setDbData, toast, reload: loadAll, loading,
-    ROLES,
+    ROLES, nav, irA, puedeIr,
   }
 
   const pages = {
@@ -345,7 +365,7 @@ export default function App() {
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
       <Toast items={toasts} setItems={setToasts} />
-      <Sidebar user={user} view={view} setView={setView} onLogout={logout} />
+      <Sidebar user={user} view={view} setView={irMenu} onLogout={logout} />
 
       {/* Área de contenido */}
       <main style={{
@@ -366,7 +386,7 @@ export default function App() {
             <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
           </div>
         ) : (
-          <div style={{ padding: '24px 28px', flex: 1 }}>
+          <div key={navKey} style={{ padding: '24px 28px', flex: 1 }}>
             {pages[view] || <div style={{ color: C.g4 }}>Módulo no encontrado</div>}
           </div>
         )}

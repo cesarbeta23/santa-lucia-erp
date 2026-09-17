@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { C, Btn, Inp, Sel, Txt, Modal, Badge, Empty, SectionHeader, card, fmt, fmtDate, Progress } from '../components/UI.jsx'
 import { supabase } from '../lib/supabase.js'
 
@@ -7,7 +7,7 @@ const ESTADOS_REM = {
   parcial:   { label: 'Parcial',   color: 'amber' },
 }
 
-export default function Despachos({ dbData, setDbData, toast, user }) {
+export default function Despachos({ dbData, setDbData, toast, user, nav, irA }) {
   const {
     proyectos = [], constructoras = [], contratos = [],
     items_contrato = [], remisiones = [], items_remision = [],
@@ -15,13 +15,19 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
     items_acta_facturacion = [], lotes_produccion = [], items_lote = [],
   } = dbData
 
-  const [vista, setVista]             = useState('lista')       // lista | proyecto | remision
-  const [proySel, setProySel]         = useState(null)
+  const navProy = nav?.proyectoId ? proyectos.find(p => p.id === nav.proyectoId) : null
+  const [vista, setVista]             = useState(navProy ? 'proyecto' : 'lista')       // lista | proyecto | remision
+  const [proySel, setProySel]         = useState(navProy || null)
   const [contratoSel, setContratoSel] = useState(null)
   const [remSel, setRemSel]           = useState(null)
   const [modalRem, setModalRem]       = useState(false)
   const [modalControl, setModalControl] = useState(false)
-  const [remExpandida, setRemExpandida]   = useState(null)
+  const [remExpandida, setRemExpandida]   = useState(nav?.remisionId || null)
+  useEffect(() => {
+    if (!nav?.remisionId) return
+    const t = setTimeout(() => document.getElementById('rem-' + nav.remisionId)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150)
+    return () => clearTimeout(t)
+  }, [])
   const [formRem, setFormRem]         = useState({ numero: '', fecha: '', transportador: '', notas: '', lote_id: null })
   const [editRemId, setEditRemId]     = useState(null)
   const [cantidades, setCantidades]   = useState({})   // { item_contrato_id: cantidad }
@@ -373,6 +379,7 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
           <Btn onClick={() => { setVista('lista'); setProySel(null) }}>← Proyectos</Btn>
+          {nav?.desde === 'proyecto' && irA && <Btn variant="primary" onClick={() => irA('proyectos', { proyectoId: nav.proyectoId })}>← Volver al proyecto</Btn>}
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>📦 Despachos — {proySel.nombre}</h1>
         </div>
 
@@ -459,7 +466,7 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
                             const abierta  = remExpandida === rem.id
                             return (
                               <>
-                                <tr key={rem.id}
+                                <tr key={rem.id} id={'rem-' + rem.id}
                                   onClick={() => setRemExpandida(abierta ? null : rem.id)}
                                   style={{ borderBottom: abierta ? 'none' : `1px solid ${C.g1}`, cursor: 'pointer', background: abierta ? '#F0F7FF' : '' }}
                                   onMouseEnter={e => !abierta && (e.currentTarget.style.background = C.g0)}

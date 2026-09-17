@@ -10,16 +10,18 @@ const ESTADOS = {
 }
 const ROL_FINANCIERO = ['superadmin', 'supervisor', 'auxiliar']
 
-export default function Proyectos({ dbData, setDbData, toast, user }) {
+export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, puedeIr }) {
   const {
     proyectos = [], constructoras = [], contratos = [],
     items_contrato = [], actas_facturacion = [],
     pedidos = [], items_pedido = [], items_despacho = [],
-    adicionales = [],
+    adicionales = [], remisiones = [], items_remision = [],
+    lotes_produccion = [], items_lote = [],
   } = dbData
 
-  const [vista, setVista]         = useState('lista')
-  const [proySel, setProySel]     = useState(null)
+  const navProy = nav?.proyectoId ? proyectos.find(p => p.id === nav.proyectoId) : null
+  const [vista, setVista]         = useState(navProy ? 'dashboard' : 'lista')
+  const [proySel, setProySel]     = useState(navProy || null)
   const [modal, setModal]         = useState(false)
   const [form, setForm]           = useState(emptyForm)
   const [editId, setEditId]       = useState(null)
@@ -29,6 +31,19 @@ export default function Proyectos({ dbData, setDbData, toast, user }) {
   const [filtEst, setFiltEst]     = useState('')
 
   const verFinanzas = ROL_FINANCIERO.includes(user?.rol)
+
+  // ── Navegación a otros módulos desde el dashboard ─────────
+  const puede = key => (puedeIr ? puedeIr(key) : false) && !!irA
+  const ir = (key, params) => irA && irA(key, { ...params, proyectoId: proySel?.id, desde: 'proyecto' })
+  const clic = key => puede(key) ? {
+    onMouseEnter: e => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,.12)' },
+    onMouseLeave: e => { e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,.06)' },
+  } : {}
+  const Flecha = ({ k }) => puede(k) ? <span style={{ color: C.g4, fontSize: 14, marginLeft: 8 }}>›</span> : null
+  const h3 = { margin: '0 0 12px', fontSize: 13, fontWeight: 700, color: C.g5, textTransform: 'uppercase', letterSpacing: '.06em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }
+  const linkMod = (key, texto) => puede(key)
+    ? <span onClick={() => ir(key, {})} style={{ fontSize: 11, color: C.bl || '#1D4ED8', cursor: 'pointer', textTransform: 'none', letterSpacing: 0, fontWeight: 600 }}>{texto} →</span>
+    : null
 
   const totalFacturado = cid =>
     actas_facturacion.filter(a => a.contrato_id === cid).reduce((s, a) => s + (Number(a.total) || 0), 0)
@@ -121,6 +136,14 @@ export default function Proyectos({ dbData, setDbData, toast, user }) {
             </div>
           </div>
 
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
+            {puede('contratos')   && <Btn size="sm" onClick={() => ir('contratos', {})}>📄 Contratos</Btn>}
+            {puede('pedidos')     && <Btn size="sm" onClick={() => ir('pedidos', {})}>📦 Pedidos</Btn>}
+            {puede('produccion')  && <Btn size="sm" onClick={() => ir('produccion', {})}>🔨 Producción</Btn>}
+            {puede('despachos')   && <Btn size="sm" onClick={() => ir('despachos', {})}>🚚 Despachos</Btn>}
+            {puede('facturacion') && <Btn size="sm" onClick={() => ir('facturacion', {})}>💰 Facturación</Btn>}
+          </div>
+
           {verFinanzas && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 24 }}>
               <Stat label="Total contratos"  value={fmt(totalContratos)} />
@@ -134,7 +157,7 @@ export default function Proyectos({ dbData, setDbData, toast, user }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
             {verFinanzas && (
               <div>
-                <h3 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 700, color: C.g5, textTransform: 'uppercase', letterSpacing: '.06em' }}>📄 Contratos</h3>
+                <h3 style={h3}>📄 Contratos {linkMod('contratos', 'Ver módulo')}</h3>
                 {contrProy.length === 0 ? (
                   <div style={{ ...card, textAlign: 'center', color: C.g4, padding: '1.5rem', fontSize: 13 }}>Sin contratos</div>
                 ) : (
@@ -144,9 +167,10 @@ export default function Proyectos({ dbData, setDbData, toast, user }) {
                       const tipo = c.tipo === 'suministro' ? '📦' : c.tipo === 'instalacion' ? '🔧' : '📋'
                       const label = c.tipo === 'suministro' ? 'Suministro' : c.tipo === 'instalacion' ? 'Instalación' : 'Todo Costo'
                       return (
-                        <div key={c.id} style={{ ...card, padding: '12px 16px' }}>
+                        <div key={c.id} style={{ ...card, padding: '12px 16px', ...(puede('contratos') ? { cursor: 'pointer' } : {}) }}
+                          {...clic('contratos')} onClick={() => puede('contratos') && ir('contratos', { contratoId: c.id })}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                            <span style={{ fontSize: 13, fontWeight: 700 }}>{tipo} {label}{c.numero ? ` #${c.numero}` : ''}</span>
+                            <span style={{ fontSize: 13, fontWeight: 700 }}>{tipo} {label}{c.numero ? ` #${c.numero}` : ''}<Flecha k="contratos" /></span>
                             <div style={{ textAlign: 'right' }}>
                               <div style={{ fontWeight: 700, fontSize: 14 }}>{fmt(c.valor_total)}</div>
                               <div style={{ fontSize: 11, color: C.gnD }}>{fmt(totalFacturado(c.id))} facturado</div>
@@ -162,7 +186,7 @@ export default function Proyectos({ dbData, setDbData, toast, user }) {
             )}
 
             <div>
-              <h3 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 700, color: C.g5, textTransform: 'uppercase', letterSpacing: '.06em' }}>📦 Materiales</h3>
+              <h3 style={h3}>📦 Materiales {linkMod('pedidos', 'Ver pedidos')}</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
                 <div style={{ ...card, padding: '10px 12px', textAlign: 'center' }}>
                   <div style={{ fontSize: 11, color: C.g4, marginBottom: 4 }}>Pedido</div>
@@ -185,11 +209,13 @@ export default function Proyectos({ dbData, setDbData, toast, user }) {
                   const ped2 = its.reduce((s,i) => s + Number(i.cantidad_pedida||0), 0)
                   const pct2 = ped2 > 0 ? (rec/ped2)*100 : 0
                   return (
-                    <div key={p.id} style={{ ...card, padding: '10px 14px' }}>
+                    <div key={p.id} style={{ ...card, padding: '10px 14px', ...(puede('pedidos') ? { cursor: 'pointer' } : {}) }}
+                      {...clic('pedidos')} onClick={() => puede('pedidos') && ir('pedidos', { pedidoId: p.id })}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                         <div>
                           <span style={{ fontWeight: 600, fontSize: 13 }}>{p.proveedor || 'Sin proveedor'}</span>
                           {p.numero && <span style={{ fontSize: 12, color: C.g4, marginLeft: 8 }}>#{p.numero}</span>}
+                          <Flecha k="pedidos" />
                         </div>
                         {verFinanzas && (
                           <div style={{ fontSize: 13, fontWeight: 600, color: C.gnD }}>
@@ -210,7 +236,7 @@ export default function Proyectos({ dbData, setDbData, toast, user }) {
 
             {verFinanzas && adProy.length > 0 && (
               <div>
-                <h3 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 700, color: C.g5, textTransform: 'uppercase', letterSpacing: '.06em' }}>➕ Adicionales</h3>
+                <h3 style={h3}>➕ Adicionales</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {adProy.slice(0, 5).map(a => (
                     <div key={a.id} style={{ ...card, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -228,9 +254,78 @@ export default function Proyectos({ dbData, setDbData, toast, user }) {
               </div>
             )}
 
+            {/* ── Producción: lotes por contrato ── */}
+            {(() => {
+              const contrProd = contrProy.filter(c => c.tipo === 'suministro' || c.tipo === 'todo_costo')
+              if (contrProd.length === 0) return null
+              return (
+                <div>
+                  <h3 style={h3}>🔨 Producción {linkMod('produccion', 'Ver módulo')}</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {contrProd.map(c => {
+                      const lotes = lotes_produccion.filter(l => l.contrato_id === c.id)
+                      const comp  = lotes.filter(l => l.estado === 'completado').length
+                      const plan  = items_lote.filter(i => lotes.some(l => l.id === i.lote_id)).reduce((s, i) => s + Number(i.cantidad || 0), 0)
+                      const desp  = remisiones.filter(r => r.contrato_id === c.id)
+                        .flatMap(r => items_remision.filter(i => i.remision_id === r.id))
+                        .reduce((s, i) => s + Number(i.cantidad || 0), 0)
+                      const pct   = plan > 0 ? Math.min(100, (desp / plan) * 100) : 0
+                      return (
+                        <div key={c.id} style={{ ...card, padding: '10px 14px', ...(puede('produccion') ? { cursor: 'pointer' } : {}) }}
+                          {...clic('produccion')} onClick={() => puede('produccion') && ir('produccion', { contratoId: c.id })}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                            <span style={{ fontSize: 13, fontWeight: 600 }}>
+                              {c.tipo === 'suministro' ? '📦 Suministro' : '📋 Todo Costo'}{c.numero ? ` #${c.numero}` : ''}<Flecha k="produccion" />
+                            </span>
+                            {lotes.length > 0
+                              ? <Badge color={comp === lotes.length ? 'green' : 'amber'}>{comp}/{lotes.length} lotes</Badge>
+                              : <Badge color="gray">Sin lotes</Badge>}
+                          </div>
+                          {lotes.length > 0 && <>
+                            <Progress value={pct} />
+                            <div style={{ fontSize: 11, color: C.g5, marginTop: 4 }}>{Math.round(pct)}% despachado</div>
+                          </>}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* ── Despachos: últimas remisiones ── */}
+            {(() => {
+              const rems = remisiones.filter(r => contrProy.some(c => c.id === r.contrato_id))
+                .sort((a, b) => new Date(b.fecha || 0) - new Date(a.fecha || 0))
+              if (rems.length === 0) return null
+              return (
+                <div>
+                  <h3 style={h3}>🚚 Últimas remisiones {linkMod('despachos', `Ver las ${rems.length}`)}</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {rems.slice(0, 5).map(r => {
+                      const tot  = items_remision.filter(i => i.remision_id === r.id).reduce((s, i) => s + Number(i.cantidad || 0), 0)
+                      const lote = lotes_produccion.find(l => l.id === r.lote_id)
+                      return (
+                        <div key={r.id} style={{ ...card, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', ...(puede('despachos') ? { cursor: 'pointer' } : {}) }}
+                          {...clic('despachos')} onClick={() => puede('despachos') && ir('despachos', { remisionId: r.id })}>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 600 }}>REM {r.numero || '—'}<Flecha k="despachos" /></div>
+                            <div style={{ fontSize: 11, color: C.g5 }}>
+                              {r.fecha ? fmtDate(r.fecha) : 'Sin fecha'}{lote ? ` · ${lote.nombre}` : ''}
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 13, fontWeight: 700 }}>{tot.toLocaleString('es-CO')} und</div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })()}
+
             {verFinanzas && (
               <div>
-                <h3 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 700, color: C.g5, textTransform: 'uppercase', letterSpacing: '.06em' }}>🧾 Últimas actas</h3>
+                <h3 style={h3}>🧾 Últimas actas {linkMod('facturacion', 'Ver facturación')}</h3>
                 {(() => {
                   const actas = actas_facturacion.filter(a => contrProy.some(c => c.id === a.contrato_id))
                     .sort((a, b) => new Date(b.fecha) - new Date(a.fecha)).slice(0, 5)
@@ -241,10 +336,11 @@ export default function Proyectos({ dbData, setDbData, toast, user }) {
                       {actas.map(a => {
                         const c = contrProy.find(x => x.id === a.contrato_id)
                         return (
-                          <div key={a.id} style={{ ...card, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div key={a.id} style={{ ...card, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', ...(puede('facturacion') ? { cursor: 'pointer' } : {}) }}
+                            {...clic('facturacion')} onClick={() => puede('facturacion') && ir('facturacion', { actaId: a.id })}>
                             <div>
                               <div style={{ fontSize: 13, fontWeight: 600 }}>
-                                {c?.tipo === 'suministro' ? '📦' : '🔧'} Acta {a.numero_acta || '—'}
+                                {c?.tipo === 'suministro' ? '📦' : '🔧'} Acta {a.numero_acta || '—'}<Flecha k="facturacion" />
                               </div>
                               <div style={{ fontSize: 11, color: C.g5 }}>{fmtDate(a.fecha)}</div>
                             </div>
