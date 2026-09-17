@@ -674,10 +674,6 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
               ))}
             </select>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0 16px' }}>
-          <div style={{ display: 'none' }}>
-          </div>
-
           <div style={{ fontSize: 12, fontWeight: 700, color: C.g5, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
             Cantidades despachadas en esta remisión
           </div>
