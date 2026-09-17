@@ -12,7 +12,7 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
     proyectos = [], constructoras = [], contratos = [],
     items_contrato = [], remisiones = [], items_remision = [],
     items_control_despacho = [], actas_facturacion = [],
-    items_acta_facturacion = [], lotes_produccion = [],
+    items_acta_facturacion = [], lotes_produccion = [], items_lote = [],
   } = dbData
 
   const [vista, setVista]             = useState('lista')       // lista | proyecto | remision
@@ -681,8 +681,19 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
             <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
               <thead style={{ background: C.g0, position: 'sticky', top: 0 }}>
                 <tr>
-                  {['Ref','Descripción','UM','Contrato','Despachado','Faltante','Esta remisión'].map((h,i) => (
-                    <th key={i} style={{ padding: '9px 10px', textAlign: i > 2 ? 'right' : 'left', fontSize: 11, fontWeight: 700, color: C.g5, borderBottom: `2px solid ${C.g2}`, whiteSpace: 'nowrap' }}>{h}</th>
+                  {[
+                    'Ref','Descripción','UM','Contrato','Despachado',
+                    'Faltante obra',
+                    ...(formRem.lote_id ? ['Faltante lote'] : []),
+                    'Esta remisión'
+                  ].map((h,i) => (
+                    <th key={i} style={{
+                      padding: '9px 10px', textAlign: i > 2 ? 'right' : 'left',
+                      fontSize: 11, fontWeight: 700,
+                      color: h === 'Faltante lote' ? C.bl : C.g5,
+                      borderBottom: `2px solid ${C.g2}`, whiteSpace: 'nowrap',
+                      background: h === 'Faltante lote' ? C.blL : C.g0,
+                    }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -693,6 +704,17 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
                   const falt = Math.max(0, contratado - desp)
                   const val  = cantidades[it.id] || ''
                   const activo = Number(val) > 0
+                  // Faltante del lote seleccionado
+                  let faltLote = null
+                  if (formRem.lote_id) {
+                    const ilote = items_lote.find(i => i.lote_id === formRem.lote_id && i.item_contrato_id === it.id)
+                    const planLote = Number(ilote?.cantidad || 0)
+                    const despLote = remisiones
+                      .filter(r => r.lote_id === formRem.lote_id)
+                      .flatMap(r => items_remision.filter(i => i.remision_id === r.id && i.item_contrato_id === it.id))
+                      .reduce((s, i) => s + Number(i.cantidad || 0), 0)
+                    faltLote = Math.max(0, planLote - despLote)
+                  }
                   return (
                     <tr key={it.id} style={{ borderBottom: `1px solid ${C.g1}`, background: activo ? '#F0FDF4' : '' }}>
                       <td style={{ padding: '7px 10px', fontWeight: 600, color: C.or, whiteSpace: 'nowrap' }}>{it.ref}</td>
@@ -701,6 +723,11 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
                       <td style={{ padding: '7px 10px', textAlign: 'right', color: C.g4 }}>{contratado.toLocaleString('es-CO')}</td>
                       <td style={{ padding: '7px 10px', textAlign: 'right', color: C.gnD }}>{desp.toLocaleString('es-CO')}</td>
                       <td style={{ padding: '7px 10px', textAlign: 'right', color: falt > 0 ? C.am : C.gnD }}>{falt.toLocaleString('es-CO')}</td>
+                      {formRem.lote_id && (
+                        <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: faltLote > 0 ? C.bl : C.gnD, background: C.blL }}>
+                          {faltLote !== null ? faltLote.toLocaleString('es-CO') : '—'}
+                        </td>
+                      )}
                       <td style={{ padding: '7px 10px', width: 110 }}>
                         <input
                           type="number"
