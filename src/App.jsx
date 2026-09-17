@@ -296,7 +296,7 @@ export default function App() {
     constructoras: [], proyectos: [], contratos: [],
     items_contrato: [], cotizaciones: [], adicionales: [],
     pedidos: [], despachos: [], actas_facturacion: [],
-    actas_instalacion: [],
+    actas_instalacion: [], mapa_items_instalacion: [],
     // de la app de obras existente:
     obras: [], usuarios: [], elementos: [], liquidaciones: [],
   })
@@ -347,7 +347,9 @@ export default function App() {
         'cotizaciones', 'adicionales', 'pedidos', 'items_pedido', 'proveedores',
         'remisiones', 'items_remision', 'items_control_despacho', 'lotes_produccion', 'items_lote', 'actas_facturacion',
         'items_acta_facturacion', 'actas_instalacion', 'items_acta_instalacion',
-        'subitems_instalacion',
+        'subitems_instalacion', 'mapa_items_instalacion',
+        // de Gestión de Obras (solo lectura, para el avance de instalación):
+        'obras', 'elementos',
       ]
       const results = await Promise.all(
         tables.map(t => supabase.from(t).select('*').then(r => ({ t, data: r.data || [], error: r.error })))
