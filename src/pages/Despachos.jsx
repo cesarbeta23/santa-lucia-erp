@@ -12,7 +12,7 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
     proyectos = [], constructoras = [], contratos = [],
     items_contrato = [], remisiones = [], items_remision = [],
     items_control_despacho = [], actas_facturacion = [],
-    items_acta_facturacion = [],
+    items_acta_facturacion = [], lotes_produccion = [],
   } = dbData
 
   const [vista, setVista]             = useState('lista')       // lista | proyecto | remision
@@ -22,7 +22,7 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
   const [modalRem, setModalRem]       = useState(false)
   const [modalControl, setModalControl] = useState(false)
   const [remExpandida, setRemExpandida]   = useState(null)
-  const [formRem, setFormRem]         = useState({ numero: '', fecha: '', transportador: '', notas: '' })
+  const [formRem, setFormRem]         = useState({ numero: '', fecha: '', transportador: '', notas: '', lote_id: null })
   const [editRemId, setEditRemId]     = useState(null)
   const [cantidades, setCantidades]   = useState({})   // { item_contrato_id: cantidad }
   const [itemsControl, setItemsControl] = useState([{ descripcion: '', unidad: 'und', cantidad: '' }])
@@ -248,6 +248,7 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
           fecha: formRem.fecha,
           transportador: formRem.transportador || null,
           notas: formRem.notas || null,
+          lote_id: formRem.lote_id || null,
         }).select().single()
         if (e1) throw e1
         remId = rem.id
@@ -472,6 +473,11 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
                                     {rem.notas && !abierta && <div style={{ fontSize: 10, color: C.g4, marginTop: 2, marginLeft: 20 }}>{rem.notas}</div>}
                                   </td>
                                   <td style={{ padding: '10px 12px', color: C.g5, whiteSpace: 'nowrap' }}>📅 {fmtDate(rem.fecha)}</td>
+                                  <td style={{ padding: '10px 12px' }}>
+                                    {rem.lote_id ? (
+                                      <Badge color="blue">{lotes_produccion.find(l => l.id === rem.lote_id)?.nombre || 'Lote'}</Badge>
+                                    ) : <span style={{ color: C.g3, fontSize: 12 }}>—</span>}
+                                  </td>
                                   <td style={{ padding: '10px 12px', color: C.g5 }}>{rem.transportador || '—'}</td>
                                   <td style={{ padding: '10px 12px', textAlign: 'center', color: C.g5, fontSize: 12 }}>
                                     {itsRem.length} ítem(s)
@@ -657,6 +663,19 @@ export default function Despachos({ dbData, setDbData, toast, user }) {
             <Inp label="Número de remisión *" value={formRem.numero} onChange={e => setFormRem(f => ({ ...f, numero: e.target.value }))} placeholder="Ej: 13301" />
             <Inp label="Fecha *" type="date" value={formRem.fecha} onChange={e => setFormRem(f => ({ ...f, fecha: e.target.value }))} />
             <Inp label="Transportador" value={formRem.transportador || ''} onChange={e => setFormRem(f => ({ ...f, transportador: e.target.value }))} placeholder="Ej: Servientrega" />
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 12, color: C.g5, display: 'block', marginBottom: 5, fontWeight: 500 }}>Lote de producción</label>
+            <select value={formRem.lote_id || ''} onChange={e => setFormRem(f => ({ ...f, lote_id: e.target.value || null }))}
+              style={{ width: '100%', padding: '8px 12px', border: `1px solid ${C.g2}`, borderRadius: 8, fontSize: 14, background: C.wh }}>
+              <option value="">— Sin lote —</option>
+              {lotes_produccion.filter(l => l.contrato_id === contratoSel?.id).sort((a,b) => a.numero-b.numero).map(l => (
+                <option key={l.id} value={l.id}>{l.nombre}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0 16px' }}>
+          <div style={{ display: 'none' }}>
           </div>
 
           <div style={{ fontSize: 12, fontWeight: 700, color: C.g5, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
