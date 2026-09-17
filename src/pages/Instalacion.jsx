@@ -8,7 +8,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
   const {
     proyectos = [], contratos = [], items_contrato = [], constructoras = [],
     actas_facturacion = [], items_acta_facturacion = [],
-    obras = [], elementos = [], mapa_items_instalacion = [],
+    obras = [], elementos = [], mapa_items_instalacion = [], subitems_instalacion = [],
   } = dbData
   const editable = puedeEditar ? puedeEditar('instalacion') : true
 
@@ -23,14 +23,27 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
   const [obraForm, setObraForm]   = useState('')
   const [mapaItem, setMapaItem]   = useState(null)       // ítem al que se le están eligiendo elementos
   const [selEls, setSelEls]       = useState([])
+  const [partesItem, setPartesItem] = useState(null)     // ítem al que se le están armando las partes
+  const [partesTmp, setPartesTmp]   = useState([])
   const [saving, setSaving]       = useState(false)
 
   // ── Helpers ───────────────────────────────────────────────
   const contratosInst = contratos.filter(c => TIPOS_INST.includes(c.tipo))
   const itemsDe   = cid => items_contrato.filter(i => i.contrato_id === cid).sort((a, b) => (a.orden || 0) - (b.orden || 0))
   const obraDe    = proy => obras.find(o => o.id === proy?.obra_id) || null
-  const elsDeItem = itemId => mapa_items_instalacion.filter(m => m.item_contrato_id === itemId).map(m => m.elemento_id)
+  const partesDe  = itemId => subitems_instalacion.filter(p => p.item_contrato_id === itemId).sort((a, b) => (a.orden || 0) - (b.orden || 0))
+  const elsDeItem = itemId => [...new Set([
+    ...mapa_items_instalacion.filter(m => m.item_contrato_id === itemId).map(m => m.elemento_id),
+    ...partesDe(itemId).filter(p => p.elemento_id).map(p => p.elemento_id),
+  ])]
   const nombreEl  = eid => elementos.find(e => e.id === eid)?.nombre || eid
+
+  // Un elemento solo puede pertenecer a un ítem del contrato.
+  // Devuelve el ítem que ya lo tiene (si es otro distinto al que se está editando).
+  function itemQueUsa(eid, exceptoItemId) {
+    const m = mapa_items_instalacion.find(x => x.elemento_id === eid && x.contrato_id === contratoSel?.id && x.item_contrato_id !== exceptoItemId)
+    return m ? items_contrato.find(i => i.id === m.item_contrato_id) : null
+  }
 
   // Todos los apartamentos de la obra vinculada
   const aptosDe = obra => (obra?.pisos || []).flatMap(p =>
@@ -106,6 +119,79 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
       }))
       toast('Equivalencias guardadas', 'ok')
       setMapaItem(null)
+    } catch (e) { toast('Error: ' + e.message, 'err') }
+    setSaving(false)
+  }
+
+  // ── Partes del ítem (lo que se paga a la gente) ───────────
+  function abrirPartes(item) {
+    const ps = partesDe(item.id)
+    setPartesItem(item)
+    setPartesTmp(ps.length
+      ? ps.map(p => ({ id: p.id, nombre: p.nombre, unidad: p.unidad || 'und', valor_instalador: p.valor_instalador || 0, valor_detallado: p.valor_detallado || 0, elemento_id: p.elemento_id }))
+      : [{ nombre: item.descripcion, unidad: item.unidad || 'und', valor_instalador: '', valor_detallado: '' }])
+  }
+
+  async function guardarPartes() {
+    setSaving(true)
+    try {
+      const filas = partesTmp.filter(p => p.nombre?.trim())
+      await supabase.from('subitems_instalacion').delete().eq('item_contrato_id', partesItem.id)
+      let nuevas = []
+      if (filas.length) {
+        const rows = filas.map((p, i) => ({
+          item_contrato_id: partesItem.id, nombre: p.nombre.trim(), unidad: p.unidad || 'und',
+          valor_instalador: Number(p.valor_instalador) || 0, valor_detallado: Number(p.valor_detallado) || 0,
+          elemento_id: p.elemento_id || null, orden: i,
+        }))
+        const { data, error } = await supabase.from('subitems_instalacion').insert(rows).select()
+        if (error) throw error
+        nuevas = data
+      }
+      setDbData(d => ({
+        ...d,
+        subitems_instalacion: [
+          ...(d.subitems_instalacion || []).filter(p => p.item_contrato_id !== partesItem.id),
+          ...nuevas,
+        ],
+      }))
+      toast('Partes guardadas', 'ok')
+      setPartesItem(null)
+    } catch (e) { toast('Error: ' + e.message, 'err') }
+    setSaving(false)
+  }
+
+  // Crea en Gestión de Obras los elementos de esta obra que todavía no existen
+  async function enviarALaObra() {
+    if (!obraDe(proySel)) { toast('Primero vinculá la obra', 'err'); return }
+    const pendientes = its.flatMap(it => partesDe(it.id).filter(p => !p.elemento_id).map(p => ({ p, it })))
+    if (!pendientes.length) { toast('Todas las partes ya están en la obra', 'info'); return }
+    setSaving(true)
+    try {
+      const nuevosEls = [], actualizadas = []
+      for (const { p, it } of pendientes) {
+        const el = {
+          id: `e${Date.now()}${Math.floor(Math.random() * 1000)}`,
+          nombre: p.nombre, unidad: p.unidad || 'und',
+          precio: Number(p.valor_instalador) || 0,
+          precio_detallado: Number(p.valor_detallado) || 0,
+          grupo: it.ref || 'Contrato', activo: true,
+          obra_id: proySel.obra_id, item_contrato_id: it.id,
+        }
+        const { data: elCreado, error: e1 } = await supabase.from('elementos').insert(el).select().single()
+        if (e1) throw e1
+        nuevosEls.push(elCreado)
+        const { data: sub, error: e2 } = await supabase.from('subitems_instalacion')
+          .update({ elemento_id: elCreado.id }).eq('id', p.id).select().single()
+        if (e2) throw e2
+        actualizadas.push(sub)
+      }
+      setDbData(d => ({
+        ...d,
+        elementos: [...d.elementos, ...nuevosEls],
+        subitems_instalacion: d.subitems_instalacion.map(x => actualizadas.find(a => a.id === x.id) || x),
+      }))
+      toast(`${nuevosEls.length} elemento(s) creados en la obra`, 'ok')
     } catch (e) { toast('Error: ' + e.message, 'err') }
     setSaving(false)
   }
@@ -256,6 +342,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
       <div style={{ display: 'flex', gap: 4, marginBottom: 16, background: C.g1, padding: 4, borderRadius: 10, width: 'fit-content' }}>
         {tabBtn('avance', 'Avance por ítem')}
         {tabBtn('aptos', 'Por apartamento')}
+        {tabBtn('partes', 'Partes y pagos')}
         {tabBtn('mapa', 'Equivalencias')}
       </div>
 
@@ -369,6 +456,103 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
             </div>
       )}
 
+      {/* ── Partes y pagos ── */}
+      {tab === 'partes' && (
+        <div>
+          <div style={{ ...card, padding: '12px 16px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 13, color: C.g5, flex: 1, minWidth: 260 }}>
+              Cada ítem del contrato se desglosa en las partes que se le pagan a la gente.
+              Al enviarlas a la obra se crean como elementos <strong>de esta obra</strong> en Gestión de Obras,
+              y quedan amarrados a su ítem: cuando estén todas chuleadas en un apto, cuenta una unidad instalada.
+            </div>
+            {editable && <Btn variant="primary" onClick={enviarALaObra} disabled={saving || !obra}>
+              {saving ? 'Enviando…' : '→ Enviar a la obra'}
+            </Btn>}
+          </div>
+          <div style={{ display: 'grid', gap: 8 }}>
+            {its.map(it => {
+              const ps = partesDe(it.id)
+              const enObra = ps.filter(p => p.elemento_id).length
+              const totInst = ps.reduce((s, p) => s + Number(p.valor_instalador || 0), 0)
+              const totDet  = ps.reduce((s, p) => s + Number(p.valor_detallado || 0), 0)
+              return (
+                <div key={it.id} style={{ ...card, padding: '12px 16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: ps.length ? 8 : 0 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700 }}>
+                        <span style={{ color: '#1D4ED8' }}>{it.ref}</span> · {it.descripcion}
+                      </div>
+                      <div style={{ fontSize: 12, color: ps.length ? C.g5 : C.or, marginTop: 3 }}>
+                        {ps.length
+                          ? `${ps.length} parte(s) · ${enObra} en la obra · paga ${fmt(totInst)} instalación + ${fmt(totDet)} detallado`
+                          : 'Sin desglosar'}
+                      </div>
+                    </div>
+                    {verValorContrato && <div style={{ textAlign: 'right', minWidth: 110 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700 }}>{fmt(it.vr_unitario)}</div>
+                      <div style={{ fontSize: 10, color: C.g4 }}>cobra x unidad</div>
+                    </div>}
+                    {editable && <Btn size="sm" onClick={() => abrirPartes(it)}>{ps.length ? 'Editar partes' : 'Desglosar'}</Btn>}
+                  </div>
+                  {ps.length > 0 && (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {ps.map(p => (
+                        <span key={p.id} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 999, background: p.elemento_id ? '#DCFCE7' : C.g1, color: p.elemento_id ? C.gnD : C.g5, border: `1px solid ${p.elemento_id ? '#BBF7D0' : C.g2}` }}>
+                          {p.elemento_id ? '✓ ' : ''}{p.nombre} · {fmt(p.valor_instalador)}{Number(p.valor_detallado) ? ` + ${fmt(p.valor_detallado)}` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Modal partes */}
+      {partesItem && (
+        <Modal title={`Partes de: ${partesItem.descripcion}`} onClose={() => setPartesItem(null)} wide>
+          <p style={{ fontSize: 13, color: C.g5, marginBottom: 12 }}>
+            Los valores son lo que se le paga a la gente por cada parte. Las que ya están en la obra no cambian de nombre acá.
+          </p>
+          <div style={{ display: 'grid', gap: 6 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 110px 110px 32px', gap: 8, fontSize: 10, fontWeight: 700, color: C.g5, textTransform: 'uppercase' }}>
+              <span>Parte</span><span>UM</span><span>Instalación</span><span>Detallado</span><span />
+            </div>
+            {partesTmp.map((p, i) => (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 110px 110px 32px', gap: 8, alignItems: 'center' }}>
+                <input value={p.nombre} disabled={!!p.elemento_id}
+                  onChange={e => setPartesTmp(t => t.map((x, j) => j === i ? { ...x, nombre: e.target.value } : x))}
+                  placeholder="Ej: Ala y marco"
+                  style={{ padding: '7px 10px', border: `1px solid ${C.g2}`, borderRadius: 8, fontSize: 13, background: p.elemento_id ? C.g0 : 'white' }} />
+                <input value={p.unidad}
+                  onChange={e => setPartesTmp(t => t.map((x, j) => j === i ? { ...x, unidad: e.target.value } : x))}
+                  style={{ padding: '7px 8px', border: `1px solid ${C.g2}`, borderRadius: 8, fontSize: 13 }} />
+                <input type="number" min="0" value={p.valor_instalador}
+                  onChange={e => setPartesTmp(t => t.map((x, j) => j === i ? { ...x, valor_instalador: e.target.value } : x))}
+                  style={{ padding: '7px 8px', border: `1px solid ${C.g2}`, borderRadius: 8, fontSize: 13, textAlign: 'right' }} />
+                <input type="number" min="0" value={p.valor_detallado}
+                  onChange={e => setPartesTmp(t => t.map((x, j) => j === i ? { ...x, valor_detallado: e.target.value } : x))}
+                  style={{ padding: '7px 8px', border: `1px solid ${C.g2}`, borderRadius: 8, fontSize: 13, textAlign: 'right' }} />
+                <Btn size="sm" variant="danger" onClick={() => setPartesTmp(t => t.filter((_, j) => j !== i))}>✕</Btn>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <Btn size="sm" onClick={() => setPartesTmp(t => [...t, { nombre: '', unidad: 'und', valor_instalador: '', valor_detallado: '' }])}>+ Agregar parte</Btn>
+          </div>
+          <div style={{ marginTop: 14, fontSize: 12, color: C.g5 }}>
+            Total que se paga por unidad: <strong>{fmt(partesTmp.reduce((s, p) => s + (Number(p.valor_instalador) || 0) + (Number(p.valor_detallado) || 0), 0))}</strong>
+            {verValorContrato && partesItem.vr_unitario ? ` · se cobra ${fmt(partesItem.vr_unitario)}` : ''}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
+            <Btn onClick={() => setPartesItem(null)}>Cancelar</Btn>
+            <Btn variant="primary" onClick={guardarPartes} disabled={saving}>{saving ? 'Guardando…' : 'Guardar'}</Btn>
+          </div>
+        </Modal>
+      )}
+
       {/* ── Equivalencias ── */}
       {tab === 'mapa' && (
         <div>
@@ -377,6 +561,17 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
             Ejemplo: "Puerta WC social" = Puerta Wc Social + CHAPA + TOPE RESORTE.
             El ítem cuenta como instalado en un apartamento solo cuando todas sus partes están chuleadas.
           </div>
+          {(() => {
+            const usados = mapa_items_instalacion.filter(m => m.contrato_id === contratoSel.id).map(m => m.elemento_id)
+            const repes = [...new Set(usados.filter((e, i) => usados.indexOf(e) !== i))]
+            if (!repes.length) return null
+            return (
+              <div style={{ ...card, borderLeft: `4px solid ${C.rd}`, padding: '12px 16px', marginBottom: 14, fontSize: 13 }}>
+                ⚠️ Estos elementos están en más de un ítem, y eso hace que el avance se cuente doble:
+                <strong> {repes.map(nombreEl).join(', ')}</strong>. Dejalos en un solo ítem.
+              </div>
+            )
+          })()}
           <div style={{ display: 'grid', gap: 8 }}>
             {its.map(it => {
               const eids = elsDeItem(it.id)
@@ -408,11 +603,17 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
             {elementos.length === 0 && <div style={{ fontSize: 13, color: C.g5 }}>No hay elementos cargados.</div>}
             {elementos.map(el => {
               const marcado = selEls.includes(el.id)
+              const dueno   = itemQueUsa(el.id, mapaItem.id)
+              const bloqueado = !!dueno && !marcado
               return (
-                <label key={el.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px', borderRadius: 8, cursor: 'pointer', fontSize: 13, background: marcado ? '#EFF6FF' : C.g0, border: `1px solid ${marcado ? '#BFDBFE' : C.g1}` }}>
-                  <input type="checkbox" checked={marcado}
+                <label key={el.id} title={bloqueado ? `Ya está en ${dueno.ref}` : ''}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px', borderRadius: 8, cursor: bloqueado ? 'not-allowed' : 'pointer', fontSize: 13, opacity: bloqueado ? .55 : 1, background: marcado ? '#EFF6FF' : C.g0, border: `1px solid ${marcado ? '#BFDBFE' : C.g1}` }}>
+                  <input type="checkbox" checked={marcado} disabled={bloqueado}
                     onChange={e => setSelEls(s => e.target.checked ? [...s, el.id] : s.filter(x => x !== el.id))} />
                   <span style={{ fontWeight: marcado ? 600 : 400 }}>{el.nombre}</span>
+                  {dueno && <span style={{ marginLeft: 'auto', fontSize: 11, color: C.or }}>
+                    {marcado ? '' : `ya está en ${dueno.ref}`}
+                  </span>}
                 </label>
               )
             })}
