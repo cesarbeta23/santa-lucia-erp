@@ -132,6 +132,11 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
       : [{ nombre: item.descripcion, unidad: item.unidad || 'und', valor_instalador: '', valor_detallado: '' }])
   }
 
+  // Elementos que se pueden enlazar: los de esta obra y los generales de siempre
+  const elsObra = elementos
+    .filter(el => el.activo !== false && (!el.obra_id || el.obra_id === proySel?.obra_id))
+    .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
+
   async function guardarPartes() {
     setSaving(true)
     try {
@@ -142,7 +147,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
         const rows = filas.map((p, i) => ({
           item_contrato_id: partesItem.id, nombre: p.nombre.trim(), unidad: p.unidad || 'und',
           valor_instalador: Number(p.valor_instalador) || 0, valor_detallado: Number(p.valor_detallado) || 0,
-          elemento_id: p.elemento_id || null, orden: i,
+          elemento_id: p.elemento_id || null, orden: i,   // vacío = se crea al enviar a la obra
         }))
         const { data, error } = await supabase.from('subitems_instalacion').insert(rows).select()
         if (error) throw error
@@ -462,12 +467,18 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
           <div style={{ ...card, padding: '12px 16px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ fontSize: 13, color: C.g5, flex: 1, minWidth: 260 }}>
               Cada ítem del contrato se desglosa en las partes que se le pagan a la gente.
-              Al enviarlas a la obra se crean como elementos <strong>de esta obra</strong> en Gestión de Obras,
-              y quedan amarrados a su ítem: cuando estén todas chuleadas en un apto, cuenta una unidad instalada.
+              En obras nuevas, al enviarlas se crean como elementos <strong>de esta obra</strong> en Gestión de Obras.
+              En obras que ya están montadas, enlazá cada parte con el elemento que ya existe, para no dañar los cortes hechos.
+              De cualquier forma quedan amarradas a su ítem: cuando estén todas chuleadas en un apto, cuenta una unidad instalada.
             </div>
-            {editable && <Btn variant="primary" onClick={enviarALaObra} disabled={saving || !obra}>
-              {saving ? 'Enviando…' : '→ Enviar a la obra'}
-            </Btn>}
+            {editable && <div style={{ textAlign: 'right' }}>
+              <Btn variant="primary" onClick={enviarALaObra} disabled={saving || !obra}>
+                {saving ? 'Enviando…' : '→ Crear en la obra las que falten'}
+              </Btn>
+              <div style={{ fontSize: 11, color: C.g5, marginTop: 4, maxWidth: 220 }}>
+                {obra ? 'Solo crea las partes que no estén enlazadas todavía.' : 'Primero vinculá la obra.'}
+              </div>
+            </div>}
           </div>
           <div style={{ display: 'grid', gap: 8 }}>
             {its.map(it => {
@@ -514,14 +525,16 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
       {partesItem && (
         <Modal title={`Partes de: ${partesItem.descripcion}`} onClose={() => setPartesItem(null)} wide>
           <p style={{ fontSize: 13, color: C.g5, marginBottom: 12 }}>
-            Los valores son lo que se le paga a la gente por cada parte. Las que ya están en la obra no cambian de nombre acá.
+            Los valores son lo que se le paga a la gente por cada parte.
+            Si la obra ya está montada, enlazá cada parte con el elemento que ya existe en Gestión de Obras;
+            así no se crean repetidos y los cortes viejos quedan intactos.
           </p>
           <div style={{ display: 'grid', gap: 6 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 110px 110px 32px', gap: 8, fontSize: 10, fontWeight: 700, color: C.g5, textTransform: 'uppercase' }}>
-              <span>Parte</span><span>UM</span><span>Instalación</span><span>Detallado</span><span />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 100px 100px 1fr 32px', gap: 8, fontSize: 10, fontWeight: 700, color: C.g5, textTransform: 'uppercase' }}>
+              <span>Parte</span><span>UM</span><span>Instalación</span><span>Detallado</span><span>Elemento en la obra</span><span />
             </div>
             {partesTmp.map((p, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 110px 110px 32px', gap: 8, alignItems: 'center' }}>
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 100px 100px 1fr 32px', gap: 8, alignItems: 'center' }}>
                 <input value={p.nombre} disabled={!!p.elemento_id}
                   onChange={e => setPartesTmp(t => t.map((x, j) => j === i ? { ...x, nombre: e.target.value } : x))}
                   placeholder="Ej: Ala y marco"
@@ -535,7 +548,27 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                 <input type="number" min="0" value={p.valor_detallado}
                   onChange={e => setPartesTmp(t => t.map((x, j) => j === i ? { ...x, valor_detallado: e.target.value } : x))}
                   style={{ padding: '7px 8px', border: `1px solid ${C.g2}`, borderRadius: 8, fontSize: 13, textAlign: 'right' }} />
+                <select value={p.elemento_id || ''}
+                  onChange={e => setPartesTmp(t => t.map((x, j) => j === i ? { ...x, elemento_id: e.target.value || null } : x))}
+                  style={{ padding: '7px 8px', border: `1px solid ${C.g2}`, borderRadius: 8, fontSize: 12 }}>
+                  <option value="">— crear nuevo al enviar —</option>
+                  {elsObra.map(el => <option key={el.id} value={el.id}>{el.nombre}</option>)}
+                </select>
                 <Btn size="sm" variant="danger" onClick={() => setPartesTmp(t => t.filter((_, j) => j !== i))}>✕</Btn>
+                <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 8, margin: '-2px 0 6px' }}>
+                  <span style={{ fontSize: 11, color: C.g5, whiteSpace: 'nowrap' }}>Elemento en la obra:</span>
+                  <select value={p.elemento_id || ''}
+                    onChange={e => setPartesTmp(t => t.map((x, j) => j === i ? { ...x, elemento_id: e.target.value || null } : x))}
+                    style={{ flex: 1, padding: '5px 8px', border: `1px solid ${C.g2}`, borderRadius: 8, fontSize: 12 }}>
+                    <option value="">— Crear uno nuevo al enviar a la obra —</option>
+                    {elsObra.map(el => {
+                      const ocupado = subitems_instalacion.find(x => x.elemento_id === el.id && x.id !== p.id)
+                      return <option key={el.id} value={el.id} disabled={!!ocupado}>
+                        {el.nombre}{ocupado ? ' (ya usado en otra parte)' : ''}
+                      </option>
+                    })}
+                  </select>
+                </div>
               </div>
             ))}
           </div>
