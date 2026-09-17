@@ -8,7 +8,7 @@ const ESTADOS = {
   pausado:   { label: 'Pausado',   color: 'amber' },
   terminado: { label: 'Terminado', color: 'gray'  },
 }
-const ROL_FINANCIERO = ['superadmin', 'supervisor', 'auxiliar']
+const ROL_FINANCIERO = ['superadmin', 'facturacion', 'supervisor', 'contratos']
 
 export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, puedeIr }) {
   const {
@@ -31,6 +31,8 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
   const [filtEst, setFiltEst]     = useState('')
 
   const verFinanzas = ROL_FINANCIERO.includes(user?.rol)
+  const verFact     = puedeIr ? puedeIr('facturacion') : false
+  const verContr    = puedeIr ? puedeIr('contratos') : false
 
   // ── Navegación a otros módulos desde el dashboard ─────────
   const puede = key => (puedeIr ? puedeIr(key) : false) && !!irA
@@ -144,18 +146,18 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
             {puede('facturacion') && <Btn size="sm" onClick={() => ir('facturacion', {})}>💰 Facturación</Btn>}
           </div>
 
-          {verFinanzas && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 24 }}>
+          {verFinanzas && verContr && (
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${verFact ? 4 : 2},1fr)`, gap: 12, marginBottom: 24 }}>
               <Stat label="Total contratos"  value={fmt(totalContratos)} />
-              <Stat label="Facturado"        value={fmt(totalFact)} color={C.gnD} sub={`${Math.round(pctFact)}% del total`} />
-              <Stat label="Por facturar"     value={fmt(totalContratos - totalFact)} color={C.am} />
+              {verFact && <Stat label="Facturado"    value={fmt(totalFact)} color={C.gnD} sub={`${Math.round(pctFact)}% del total`} />}
+              {verFact && <Stat label="Por facturar" value={fmt(totalContratos - totalFact)} color={C.am} />}
               <Stat label="Adicionales"      value={adPend + adCobrar} color={adPend > 0 ? C.rd : C.gnD}
                 sub={adPend > 0 ? `${adPend} pendiente(s)` : 'Al día'} />
             </div>
           )}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-            {verFinanzas && (
+            {verFinanzas && verContr && (
               <div>
                 <h3 style={h3}>📄 Contratos {linkMod('contratos', 'Ver módulo')}</h3>
                 {contrProy.length === 0 ? (
@@ -173,10 +175,10 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
                             <span style={{ fontSize: 13, fontWeight: 700 }}>{tipo} {label}{c.numero ? ` #${c.numero}` : ''}<Flecha k="contratos" /></span>
                             <div style={{ textAlign: 'right' }}>
                               <div style={{ fontWeight: 700, fontSize: 14 }}>{fmt(c.valor_total)}</div>
-                              <div style={{ fontSize: 11, color: C.gnD }}>{fmt(totalFacturado(c.id))} facturado</div>
+                              {verFact && <div style={{ fontSize: 11, color: C.gnD }}>{fmt(totalFacturado(c.id))} facturado</div>}
                             </div>
                           </div>
-                          <Progress value={pct} />
+                          {verFact && <Progress value={pct} />}
                         </div>
                       )
                     })}
@@ -323,7 +325,7 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
               )
             })()}
 
-            {verFinanzas && (
+            {verFact && (
               <div>
                 <h3 style={h3}>🧾 Últimas actas {linkMod('facturacion', 'Ver facturación')}</h3>
                 {(() => {
@@ -431,13 +433,13 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
                               <span>📦 {pedidos.filter(x => x.proyecto_id === p.id).length} pedido(s)</span>
                               {p.fecha_inicio && <span>📅 {fmtDate(p.fecha_inicio)}</span>}
                             </div>
-                            {verFinanzas && tC > 0 && (
+                            {verFinanzas && verContr && tC > 0 && (
                               <div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
                                   <span style={{ color: C.g5 }}>{fmt(tC)}</span>
-                                  <span style={{ color: C.gnD, fontWeight: 600 }}>{Math.round(pct)}% facturado</span>
+                                  {verFact && <span style={{ color: C.gnD, fontWeight: 600 }}>{Math.round(pct)}% facturado</span>}
                                 </div>
-                                <Progress value={pct} />
+                                {verFact && <Progress value={pct} />}
                               </div>
                             )}
                             {p.notas && <div style={{ fontSize: 11, color: C.g4, marginTop: 8, fontStyle: 'italic' }}>{p.notas}</div>}

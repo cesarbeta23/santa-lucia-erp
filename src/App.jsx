@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import { C, Btn, Inp, Toast, fmt } from './components/UI.jsx'
-import { supabase } from './lib/supabase.js'
+import { supabase, setAccessToken } from './lib/supabase.js'
+import { apiUrl } from './lib/api.js'
+
+const SESION_KEY = 'sl_erp_session'
 
 // ── Páginas (esqueleto — se llenan módulo por módulo) ──────
 import Dashboard    from './pages/Dashboard.jsx'
@@ -16,45 +19,49 @@ import Adicionales  from './pages/Adicionales.jsx'
 import Constructoras from './pages/Constructoras.jsx'
 import Config       from './pages/Config.jsx'
 
-// ── Roles ──────────────────────────────────────────────────
+// ── Roles del ERP (columna usuarios.rol_erp) ───────────────
+// La columna "rol" sigue siendo la de Gestión de Obras y no se toca.
 const ROLES = {
-  SA: 'superadmin',
-  SV: 'supervisor',
-  AX: 'auxiliar',
-  IN: 'instalador',
+  SA: 'superadmin',    // César — todo
+  FA: 'facturacion',   // asistente de facturación — todo menos configuración
+  SV: 'supervisor',    // supervisores — todo menos facturación y contratos
+  CO: 'contratos',     // asistente de contratos — todo menos configuración
+  PR: 'produccion',    // jefe y auxiliar de producción — pedidos, producción, despachos
 }
+const TODOS_MENOS_FACT = ['superadmin', 'facturacion', 'contratos', 'supervisor']
+const CON_FACT = ['superadmin', 'facturacion', 'contratos']   // también ven el módulo Contratos
 
 // ── Módulos del sidebar ────────────────────────────────────
 const MODULES = [
   {
     section: 'Principal',
     items: [
-      { key: 'dashboard',    label: 'Dashboard',       icon: '◼', roles: ['superadmin','supervisor','auxiliar'] },
+      { key: 'dashboard',    label: 'Dashboard',       icon: '◼', roles: TODOS_MENOS_FACT },
     ],
   },
   {
     section: 'Comercial',
     items: [
-      { key: 'comercial',    label: 'Cotizaciones',    icon: '📋', roles: ['superadmin','supervisor'] },
-      { key: 'contratos',    label: 'Contratos',       icon: '📄', roles: ['superadmin','supervisor'] },
-      { key: 'proyectos',    label: 'Proyectos',       icon: '🏗️', roles: ['superadmin','supervisor','auxiliar'] },
-      { key: 'constructoras',label: 'Constructoras',   icon: '🏢', roles: ['superadmin'] },
+      { key: 'comercial',    label: 'Cotizaciones',    icon: '📋', roles: TODOS_MENOS_FACT },
+      { key: 'contratos',    label: 'Contratos',       icon: '📄', roles: CON_FACT },
+      { key: 'proyectos',    label: 'Proyectos',       icon: '🏗️', roles: TODOS_MENOS_FACT },
+      { key: 'constructoras',label: 'Constructoras',   icon: '🏢', roles: TODOS_MENOS_FACT },
     ],
   },
   {
     section: 'Operativo',
     items: [
-      { key: 'pedidos',      label: 'Pedidos',         icon: '📦', roles: ['superadmin','supervisor','auxiliar'] },
-      { key: 'produccion',   label: 'Producción',      icon: '🔨', roles: ['superadmin','supervisor','auxiliar'] },
-      { key: 'despachos',    label: 'Despachos',       icon: '🚚', roles: ['superadmin','supervisor','auxiliar'] },
-      { key: 'instalacion',  label: 'Instalación',     icon: '🔧', roles: ['superadmin','supervisor','auxiliar'] },
-      { key: 'adicionales',  label: 'Adicionales',     icon: '➕', roles: ['superadmin','supervisor','auxiliar'] },
+      { key: 'pedidos',      label: 'Pedidos',         icon: '📦', roles: [...TODOS_MENOS_FACT, 'produccion'] },
+      { key: 'produccion',   label: 'Producción',      icon: '🔨', roles: [...TODOS_MENOS_FACT, 'produccion'] },
+      { key: 'despachos',    label: 'Despachos',       icon: '🚚', roles: [...TODOS_MENOS_FACT, 'produccion'] },
+      { key: 'instalacion',  label: 'Instalación',     icon: '🔧', roles: TODOS_MENOS_FACT },
+      { key: 'adicionales',  label: 'Adicionales',     icon: '➕', roles: TODOS_MENOS_FACT },
     ],
   },
   {
     section: 'Financiero',
     items: [
-      { key: 'facturacion',  label: 'Facturación',     icon: '💰', roles: ['superadmin','supervisor'], restricted: true },
+      { key: 'facturacion',  label: 'Facturación',     icon: '💰', roles: CON_FACT, restricted: true },
     ],
   },
   {
@@ -65,6 +72,8 @@ const MODULES = [
   },
 ]
 
+const modulosDe = rol => MODULES.flatMap(sec => sec.items).filter(it => it.roles.includes(rol)).map(it => it.key)
+
 // ── Componente Login ───────────────────────────────────────
 function Login({ onLogin }) {
   const [form, setForm] = useState({ email: '', pin: '' })
@@ -72,17 +81,16 @@ function Login({ onLogin }) {
   const [loading, setLoading] = useState(false)
 
   async function handleLogin() {
-    if (!form.email || !form.pin) { setErr('Ingresa correo y PIN'); return }
+    if (!form.email || !form.pin) { setErr('Ingresa cédula y PIN'); return }
     setLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('usuarios')
-        .select('*')
-        .eq('email', form.email)
-        .eq('pin', form.pin)
-        .single()
-
-      if (error || !data) { setErr('Correo o PIN incorrecto'); return }
+      const r = await fetch(apiUrl('/api/login'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: form.email, pin: form.pin }),
+      })
+      const data = await r.json().catch(() => ({}))
+      if (!r.ok || !data.token) { setErr(data.error || 'Cédula o PIN incorrecto'); return }
       onLogin(data)
     } catch {
       setErr('Error de conexión')
@@ -119,9 +127,9 @@ function Login({ onLogin }) {
         </div>
 
         <Inp
-          label="Correo"
-          type="email"
-          placeholder="usuario@obra.com"
+          label="Cédula"
+          type="text"
+          placeholder="Número de cédula o usuario"
           value={form.email}
           onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
         />
@@ -260,8 +268,13 @@ function Sidebar({ user, view, setView, onLogout }) {
 // ── App principal ──────────────────────────────────────────
 export default function App() {
   const [user, setUser] = useState(() => {
-    try { const s = localStorage.getItem('sl_erp_user'); return s ? JSON.parse(s) : null }
-    catch { return null }
+    try {
+      localStorage.removeItem('sl_erp_user')   // sesión vieja (sin pase)
+      const s = JSON.parse(localStorage.getItem(SESION_KEY) || 'null')
+      if (!s?.token || !s?.exp || s.exp * 1000 < Date.now()) { localStorage.removeItem(SESION_KEY); return null }
+      setAccessToken(s.token)
+      return { ...s.user, _exp: s.exp }
+    } catch { return null }
   })
   const [view, setView]     = useState('dashboard')
   const [nav, setNav]       = useState(null)   // { proyectoId, contratoId, pedidoId, actaId, remisionId, desde }
@@ -283,16 +296,35 @@ export default function App() {
     setTimeout(() => setToasts(x => x.filter(i => i.id !== id)), 5000)
   }
 
-  function login(u) {
-    setUser(u)
-    localStorage.setItem('sl_erp_user', JSON.stringify(u))
+  function login({ user: u, token, exp }) {
+    setAccessToken(token)
+    localStorage.setItem(SESION_KEY, JSON.stringify({ user: u, token, exp }))
+    setUser({ ...u, _exp: exp })
   }
 
   function logout() {
+    setAccessToken(null)
+    localStorage.removeItem(SESION_KEY)
     setUser(null)
-    localStorage.removeItem('sl_erp_user')
     setView('dashboard')
+    setNav(null)
   }
+
+  // Si el rol no tiene la vista actual (ej. producción no ve Dashboard), ir al primer módulo permitido
+  useEffect(() => {
+    if (!user) return
+    const perm = modulosDe(user.rol)
+    if (!perm.includes(view)) setView(perm[0] || 'dashboard')
+  }, [user?.rol])
+
+  // Cerrar sesión cuando el pase vence
+  useEffect(() => {
+    if (!user?._exp) return
+    const ms = user._exp * 1000 - Date.now()
+    if (ms <= 0) { logout(); return }
+    const t = setTimeout(() => { logout(); toast('Tu sesión venció, vuelve a ingresar', 'info') }, Math.min(ms, 2147483647))
+    return () => clearTimeout(t)
+  }, [user?._exp])
 
   // Cargar datos al iniciar
   async function loadAll() {
@@ -304,12 +336,13 @@ export default function App() {
         'remisiones', 'items_remision', 'items_control_despacho', 'lotes_produccion', 'items_lote', 'actas_facturacion',
         'items_acta_facturacion', 'actas_instalacion', 'items_acta_instalacion',
         'subitems_instalacion',
-        // tablas existentes:
-        'obras', 'usuarios', 'elementos', 'liquidaciones',
       ]
       const results = await Promise.all(
-        tables.map(t => supabase.from(t).select('*').then(r => ({ t, data: r.data || [] })))
+        tables.map(t => supabase.from(t).select('*').then(r => ({ t, data: r.data || [], error: r.error })))
       )
+      if (results.some(r => r.error && /jwt|token/i.test(r.error.message || ''))) {
+        logout(); toast('Tu sesión venció, vuelve a ingresar', 'info'); return
+      }
       const newData = {}
       results.forEach(({ t, data }) => { newData[t] = data })
       setDbData(newData)
@@ -325,8 +358,8 @@ export default function App() {
 
   // Props compartidas a todas las páginas
   // ── Navegación entre módulos (ej: desde el dashboard del proyecto) ──
-  const puedeIr = key =>
-    MODULES.some(sec => sec.items.some(it => it.key === key && it.roles.includes(user.rol)))
+  const permitidos = modulosDe(user.rol)
+  const puedeIr = key => permitidos.includes(key)
 
   function irA(key, params = null) {
     if (!puedeIr(key)) { toast('No tienes acceso a ese módulo', 'err'); return }
@@ -387,7 +420,7 @@ export default function App() {
           </div>
         ) : (
           <div key={navKey} style={{ padding: '24px 28px', flex: 1 }}>
-            {pages[view] || <div style={{ color: C.g4 }}>Módulo no encontrado</div>}
+            {puedeIr(view) ? pages[view] : <div style={{ color: C.g4 }}>No tienes acceso a este módulo</div>}
           </div>
         )}
       </main>

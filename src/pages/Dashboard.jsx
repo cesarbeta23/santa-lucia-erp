@@ -1,6 +1,8 @@
 import { C, Stat, card, fmt, Badge } from '../components/UI.jsx'
 
-export default function Dashboard({ dbData, user }) {
+export default function Dashboard({ dbData, user, puedeIr }) {
+  const verFact = puedeIr ? puedeIr('facturacion') : false
+  const verContr = puedeIr ? puedeIr('contratos') : false
   const { proyectos = [], contratos = [], actas_facturacion = [], adicionales = [] } = dbData
 
   const totalContratos = contratos.reduce((s, c) => s + (Number(c.valor_total) || 0), 0)
@@ -20,11 +22,11 @@ export default function Dashboard({ dbData, user }) {
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 28 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${verFact ? 4 : verContr ? 2 : 1}, 1fr)`, gap: 14, marginBottom: 28 }}>
         <Stat label="Proyectos activos"  value={proyectos.filter(p => p.estado === 'activo').length} color={C.or} />
-        <Stat label="Total contratos"    value={fmt(totalContratos)} />
-        <Stat label="Facturado"          value={fmt(totalFacturado)} color={C.gnD} sub={`${pct}% del total`} />
-        <Stat label="Por facturar"       value={fmt(pendFact)} color={pendFact > 0 ? C.am : C.gnD} />
+        {verContr && <Stat label="Total contratos" value={fmt(totalContratos)} />}
+        {verFact && <Stat label="Facturado"    value={fmt(totalFacturado)} color={C.gnD} sub={`${pct}% del total`} />}
+        {verFact && <Stat label="Por facturar" value={fmt(pendFact)} color={pendFact > 0 ? C.am : C.gnD} />}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
