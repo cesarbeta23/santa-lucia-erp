@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { C, Btn, Sel, Badge, Empty, SectionHeader, card, fmt, Progress, Modal } from '../components/UI.jsx'
+import { C, Btn, Sel, Badge, Empty, SectionHeader, card, fmt, Progress, Modal, Stat } from '../components/UI.jsx'
 import { supabase } from '../lib/supabase.js'
 
 const TIPOS_INST = ['instalacion', 'todo_costo']
@@ -9,6 +9,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
     proyectos = [], contratos = [], items_contrato = [], constructoras = [],
     actas_facturacion = [], items_acta_facturacion = [],
     obras = [], elementos = [], mapa_items_instalacion = [], subitems_instalacion = [],
+    liquidaciones = [], usuarios = [],
   } = dbData
   const editable = puedeEditar ? puedeEditar('instalacion') : true
 
@@ -26,6 +27,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
   const [partesItem, setPartesItem] = useState(null)     // ítem al que se le están armando las partes
   const [partesTmp, setPartesTmp]   = useState([])
   const [saving, setSaving]       = useState(false)
+  const [corteDet, setCorteDet]   = useState(null)      // corte abierto en el detalle de pagos
 
   // ── Helpers ───────────────────────────────────────────────
   const contratosInst = contratos.filter(c => TIPOS_INST.includes(c.tipo))
@@ -52,13 +54,18 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
 
   // Cantidad instalada de un ítem en un apto: se cuenta solo cuando TODAS
   // sus partes están chuleadas (la constructora paga la unidad terminada).
+  // Cuenta los elementos del apto y los de sus tipologías extra
+  const elsDelApto = apto => [...(apto.elementos || []), ...(apto.elementosExtra || [])]
+
   function instaladoEnApto(apto, itemId) {
     const eids = elsDeItem(itemId)
     if (!eids.length) return 0
+    const todos = elsDelApto(apto)
     let min = Infinity
     for (const eid of eids) {
-      const el = (apto.elementos || []).find(e => e.elementoId === eid)
-      const cant = el?.completado ? Number(el.cantidad || 1) : 0
+      // si el elemento está repetido (tipología extra), se toma lo que sume completado
+      const cant = todos.filter(e => e.elementoId === eid && e.completado)
+        .reduce((s, e) => s + Number(e.cantidad || 1), 0)
       min = Math.min(min, cant)
     }
     return min === Infinity ? 0 : min
@@ -70,7 +77,8 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
   // Cuántas partes de un ítem van chuleadas en un apto (para la vista por apto)
   function parcialEnApto(apto, itemId) {
     const eids = elsDeItem(itemId)
-    const hechas = eids.filter(eid => (apto.elementos || []).find(e => e.elementoId === eid)?.completado).length
+    const todos = elsDelApto(apto)
+    const hechas = eids.filter(eid => todos.some(e => e.elementoId === eid && e.completado)).length
     return { hechas, total: eids.length }
   }
 
@@ -201,6 +209,34 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
     setSaving(false)
   }
 
+  // ── Lo pagado a instaladores y detalladores en esta obra ──
+  // Las liquidaciones se cierran por persona y corte, y pueden tocar varias obras:
+  // el valor de instalación se separa por obra, pero la retención, los pasajes
+  // y la bonificación son de la persona en ese corte, no de una obra en particular.
+  const esDetallado = r => String(r.actividad || '') === 'Detallado' || String(r.el || '').startsWith('[Detallado]')
+  const esAdicional = r => String(r.el || '').startsWith('[Adicional]')
+
+  function pagosDeObra(obra) {
+    if (!obra) return []
+    const cortes = {}
+    for (const l of liquidaciones) {
+      const filas = (l.rows || []).filter(r => (r.obra || '') === obra.nombre)
+      if (!filas.length) continue
+      const val = fs => fs.reduce((s, r) => s + Number(r.precio || 0) * Number(r.cant || 1), 0)
+      const c = cortes[l.corte] || (cortes[l.corte] = { corte: l.corte, inst: 0, det: 0, adic: 0, personas: [] })
+      const inst = val(filas.filter(r => !esDetallado(r) && !esAdicional(r)))
+      const det  = val(filas.filter(esDetallado))
+      const adic = val(filas.filter(esAdicional))
+      c.inst += inst; c.det += det; c.adic += adic
+      c.personas.push({
+        id: l.inst_id, nombre: l.inst_nombre, inst, det, adic,
+        ret: Number(l.ret || 0), pas: Number(l.pas || 0), bon: Number(l.bon || 0),
+        total: Number(l.total || 0), soloEstaObra: filas.length === (l.rows || []).length,
+      })
+    }
+    return Object.values(cortes).sort((a, b) => String(b.corte).localeCompare(String(a.corte)))
+  }
+
   // ── Vista lista de proyectos ──────────────────────────────
   if (vista === 'lista') {
     const proys = proyectos.filter(p => contratosInst.some(c => c.proyecto_id === p.id))
@@ -296,6 +332,88 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
             )
           })}
         </div>
+
+        {(() => {
+          const pagos = pagosDeObra(obra)
+          if (!obra || !verValorContrato) return null
+          const tot = pagos.reduce((a, c) => ({ inst: a.inst + c.inst, det: a.det + c.det, adic: a.adic + c.adic }), { inst: 0, det: 0, adic: 0 })
+          return (
+            <div style={{ marginTop: 22 }}>
+              <h3 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 700, color: C.g5, textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                💵 Pagado en instalación
+              </h3>
+              {pagos.length === 0 ? (
+                <div style={{ ...card, padding: '14px 18px', fontSize: 13, color: C.g5 }}>
+                  Todavía no hay cortes cerrados de esta obra.
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 12 }}>
+                    <Stat label="Instalación" value={fmt(tot.inst)} />
+                    <Stat label="Detallado"   value={fmt(tot.det)} />
+                    <Stat label="Adicionales" value={fmt(tot.adic)} color={C.am} />
+                    <Stat label="Total pagado" value={fmt(tot.inst + tot.det + tot.adic)} color={C.or} sub={`${pagos.length} corte(s)`} />
+                  </div>
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    {pagos.map(c => (
+                      <div key={c.corte} style={{ ...card, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                        onClick={() => setCorteDet(c)}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600 }}>{c.corte} ›</div>
+                          <div style={{ fontSize: 11, color: C.g5 }}>
+                            {c.personas.length} persona(s) · instalación {fmt(c.inst)}{c.det ? ` · detallado ${fmt(c.det)}` : ''}{c.adic ? ` · adicionales ${fmt(c.adic)}` : ''}
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 14, fontWeight: 700 }}>{fmt(c.inst + c.det + c.adic)}</div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )
+        })()}
+
+        {corteDet && (
+          <Modal title={`Pagos del corte ${corteDet.corte}`} onClose={() => setCorteDet(null)} wide>
+            <div style={{ ...card, padding: 0, overflow: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: C.g1 }}>
+                    {['PERSONA', 'INSTALACIÓN', 'DETALLADO', 'ADICIONALES', 'RETENIDO 10%', 'PASAJES', 'BONIFICACIÓN', 'PAGADO'].map((h, i) => (
+                      <th key={h} style={{ padding: '7px 10px', textAlign: i === 0 ? 'left' : 'right', fontSize: 10, fontWeight: 700, color: C.g5, whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {corteDet.personas.map((p, i) => (
+                    <tr key={i} style={{ borderTop: `1px solid ${C.g1}` }}>
+                      <td style={{ padding: '7px 10px', fontWeight: 600 }}>
+                        {p.nombre}
+                        {!p.soloEstaObra && <span style={{ fontSize: 10, color: C.or, marginLeft: 6 }}>trabajó en más obras</span>}
+                      </td>
+                      <td style={{ padding: '7px 10px', textAlign: 'right' }}>{fmt(p.inst)}</td>
+                      <td style={{ padding: '7px 10px', textAlign: 'right' }}>{p.det ? fmt(p.det) : '—'}</td>
+                      <td style={{ padding: '7px 10px', textAlign: 'right' }}>{p.adic ? fmt(p.adic) : '—'}</td>
+                      <td style={{ padding: '7px 10px', textAlign: 'right', color: C.rd }}>{fmt(p.ret)}</td>
+                      <td style={{ padding: '7px 10px', textAlign: 'right' }}>{p.pas ? fmt(p.pas) : '—'}</td>
+                      <td style={{ padding: '7px 10px', textAlign: 'right' }}>{p.bon ? fmt(p.bon) : '—'}</td>
+                      <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700 }}>{fmt(p.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p style={{ fontSize: 12, color: C.g5, marginTop: 12 }}>
+              Instalación, detallado y adicionales son solo de esta obra.
+              El retenido, los pasajes, la bonificación y el pagado son del corte completo de esa persona:
+              si trabajó en varias obras, ese valor incluye las demás.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+              <Btn onClick={() => setCorteDet(null)}>Cerrar</Btn>
+            </div>
+          </Modal>
+        )}
 
         {modalObra && (
           <Modal title="Vincular obra de Gestión de Obras" onClose={() => setModalObra(false)}>
