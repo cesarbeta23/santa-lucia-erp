@@ -466,6 +466,47 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
       )}
 
       {/* ── MODALES (siempre disponibles) ── */}
+      {corteDet && (
+        <Modal title={`Pagos del corte ${corteDet.corte}`} onClose={() => setCorteDet(null)} wide>
+          <div style={{ ...card, padding: 0, overflow: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: C.g1 }}>
+                  {['PERSONA', 'INSTALACIÓN', 'DETALLADO', 'ADICIONALES', 'RETENIDO 10%', 'PASAJES', 'BONIFICACIÓN', 'PAGADO'].map((h, i) => (
+                    <th key={h} style={{ padding: '7px 10px', textAlign: i === 0 ? 'left' : 'right', fontSize: 10, fontWeight: 700, color: C.g5, whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {corteDet.personas.map((p, i) => (
+                  <tr key={i} style={{ borderTop: `1px solid ${C.g1}` }}>
+                    <td style={{ padding: '7px 10px', fontWeight: 600 }}>
+                      {p.nombre}
+                      {!p.soloEstaObra && <span style={{ fontSize: 10, color: C.or, marginLeft: 6 }}>trabajó en más obras</span>}
+                    </td>
+                    <td style={{ padding: '7px 10px', textAlign: 'right' }}>{fmt(p.inst)}</td>
+                    <td style={{ padding: '7px 10px', textAlign: 'right' }}>{p.det ? fmt(p.det) : '—'}</td>
+                    <td style={{ padding: '7px 10px', textAlign: 'right' }}>{p.adic ? fmt(p.adic) : '—'}</td>
+                    <td style={{ padding: '7px 10px', textAlign: 'right', color: C.rd }}>{fmt(p.ret)}</td>
+                    <td style={{ padding: '7px 10px', textAlign: 'right' }}>{p.pas ? fmt(p.pas) : '—'}</td>
+                    <td style={{ padding: '7px 10px', textAlign: 'right' }}>{p.bon ? fmt(p.bon) : '—'}</td>
+                    <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700 }}>{fmt(p.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p style={{ fontSize: 12, color: C.g5, marginTop: 12 }}>
+            Instalación, detallado y adicionales son solo de esta obra. El retenido, los pasajes,
+            la bonificación y el pagado son del corte completo de esa persona: si trabajó en varias obras,
+            ese valor incluye las demás.
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+            <Btn onClick={() => setCorteDet(null)}>Cerrar</Btn>
+          </div>
+        </Modal>
+      )}
+
       {modal && (
         <Modal title={editId ? 'Editar proyecto' : 'Nuevo proyecto'} onClose={() => setModal(false)} wide>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
