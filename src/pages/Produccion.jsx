@@ -22,7 +22,7 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
   const [vista, setVista]           = useState(navContr ? 'contrato' : navProy ? 'proyecto' : 'lista')   // lista | proyecto | contrato
   const [proySel, setProySel]       = useState(navProy)
   const [contratoSel, setContratoSel] = useState(navContr)
-  const [modalCierre, setModalCierre] = useState(null)   // lote que se va a completar
+  const [modalCierre, setModalCierre] = useState(null)   // { lote, soloAjuste }
   const [modalLotes, setModalLotes] = useState(false)
   const [nLotes, setNLotes]         = useState(4)
   const [editando, setEditando]     = useState({})        // { loteId_itemId: valor }
@@ -187,10 +187,10 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
 
   function pedirCierre(lote) {
     if (saldosLote(lote).length === 0) { cambiarEstado(lote.id, 'completado'); return }
-    setModalCierre(lote)
+    setModalCierre({ lote, soloAjuste: false })
   }
 
-  async function completarLote(lote, pasarSaldo) {
+  async function completarLote(lote, pasarSaldo, cerrar = true) {
     setSaving(true)
     try {
       if (pasarSaldo) {
@@ -241,8 +241,10 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
           ],
         }))
       }
-      await cambiarEstado(lote.id, 'completado')
-      toast(pasarSaldo ? `${lote.nombre} completado y saldo trasladado` : `${lote.nombre} completado`, 'ok')
+      if (cerrar) await cambiarEstado(lote.id, 'completado')
+      toast(cerrar
+        ? (pasarSaldo ? `${lote.nombre} completado y saldo trasladado` : `${lote.nombre} completado`)
+        : 'Saldo trasladado al siguiente lote', 'ok')
       setModalCierre(null)
     } catch (e) { toast('Error: ' + e.message, 'err') }
     setSaving(false)
@@ -296,6 +298,8 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
                     <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
                       {editable && lote.estado !== 'en_proceso' && lote.estado !== 'completado' &&
                         <Btn size="sm" onClick={() => cambiarEstado(lote.id, 'en_proceso')}>▶ Iniciar</Btn>}
+                      {editable && lote.estado !== 'completado' && saldosLote(lote).length > 0 && siguientesAbiertos(lote).length > 0 &&
+                        <Btn size="sm" onClick={() => setModalCierre({ lote, soloAjuste: true })}>↪ Pasar saldo</Btn>}
                       {editable && lote.estado === 'en_proceso' &&
                         <Btn size="sm" variant="success" onClick={() => pedirCierre(lote)}>✓ Completar</Btn>}
                       {editable && lote.estado === 'completado' &&
@@ -438,12 +442,15 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
 
         {/* Modal completar lote con saldo */}
         {modalCierre && (() => {
-          const saldos = saldosLote(modalCierre)
-          const sigs   = siguientesAbiertos(modalCierre)
+          const { lote: loteM, soloAjuste } = modalCierre
+          const saldos = saldosLote(loteM)
+          const sigs   = siguientesAbiertos(loteM)
           return (
-            <Modal title={`Completar ${modalCierre.nombre}`} onClose={() => setModalCierre(null)} wide>
+            <Modal title={soloAjuste ? `Pasar saldo de ${loteM.nombre}` : `Completar ${loteM.nombre}`} onClose={() => setModalCierre(null)} wide>
               <p style={{ fontSize: 13, color: C.g5, marginBottom: 12 }}>
-                Este lote no cuadra exacto con lo despachado. Revisa las diferencias:
+                {soloAjuste
+                  ? 'El lote queda con lo que realmente se despachó y la diferencia se ajusta en los lotes siguientes. El lote no se cierra.'
+                  : 'Este lote no cuadra exacto con lo despachado. Revisa las diferencias:'}
               </p>
               <div style={{ ...card, padding: 0, overflow: 'auto', marginBottom: 16 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -482,10 +489,10 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
               )}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
                 <Btn onClick={() => setModalCierre(null)}>Cancelar</Btn>
-                <Btn onClick={() => completarLote(modalCierre, false)} disabled={saving}>Solo completar</Btn>
+                {!soloAjuste && <Btn onClick={() => completarLote(loteM, false)} disabled={saving}>Solo completar</Btn>}
                 {sigs.length > 0 && (
-                  <Btn variant="primary" onClick={() => completarLote(modalCierre, true)} disabled={saving}>
-                    {saving ? 'Guardando…' : `Completar y pasar saldo a ${sigs[0].nombre}`}
+                  <Btn variant="primary" onClick={() => completarLote(loteM, true, !soloAjuste)} disabled={saving}>
+                    {saving ? 'Guardando…' : soloAjuste ? `Pasar saldo a ${sigs[0].nombre}` : `Completar y pasar saldo a ${sigs[0].nombre}`}
                   </Btn>
                 )}
               </div>

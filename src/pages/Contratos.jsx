@@ -1,6 +1,6 @@
 import { callClaudeStream } from '../lib/api.js'
 import * as XLSX from 'xlsx'
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { C, Btn, Inp, Sel, Txt, Modal, Badge, Empty, SectionHeader, card, fmt, fmtDate, Progress } from '../components/UI.jsx'
 import { supabase } from '../lib/supabase.js'
 
@@ -406,6 +406,17 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
     } catch (e) { toast('Error: ' + e.message, 'err') }
   }
 
+  // Deja el valor del contrato igual al total de sus ítems
+  async function fijarValorContrato(contrato, total) {
+    try {
+      const { data, error } = await supabase.from('contratos').update({ valor_total: total }).eq('id', contrato.id).select().single()
+      if (error) throw error
+      setContratoSel(data)
+      setDbData(d => ({ ...d, contratos: d.contratos.map(c => c.id === data.id ? data : c) }))
+      return true
+    } catch (e) { toast('Error: ' + e.message, 'err'); return false }
+  }
+
   function updateItem(idx, field, val) {
     setParsedItems(items => items.map((it, i) => i === idx ? { ...it, [field]: val } : it))
   }
@@ -469,6 +480,7 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
         ? totalItems * 0.10 * 0.19
         : totalItems * 0.19
     const totalConIva = contratoSel.iva_incluido ? totalItems : totalItems + ivaItems
+    const valorDesactualizado = totalConIva > 0 && Math.round(Number(contratoSel.valor_total) || 0) !== Math.round(totalConIva)
 
     return (
       <div>
@@ -488,6 +500,11 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
             <Btn onClick={() => abrirModalItems(contratoSel)}>
               {items.length ? '🔄 Recargar ítems' : '+ Cargar ítems desde PDF'}
             </Btn>
+            {valorDesactualizado && (
+              <Btn variant="primary" onClick={() => fijarValorContrato(contratoSel, Math.round(totalConIva))}>
+                💲 Actualizar valor a {fmt(totalConIva)}
+              </Btn>
+            )}
             <Btn onClick={() => openEdit(contratoSel)}>Editar contrato</Btn>
           </div>
         </div>
