@@ -1,4 +1,5 @@
 import { callClaudeStream } from '../lib/api.js'
+import * as XLSX from 'xlsx'
 import { useState, useRef } from 'react'
 import { C, Btn, Inp, Sel, Txt, Modal, Badge, Empty, SectionHeader, card, fmt, fmtDate, Progress } from '../components/UI.jsx'
 import { supabase } from '../lib/supabase.js'
@@ -121,6 +122,7 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
   const [pegado, setPegado]           = useState('')
   const [avanceIA, setAvanceIA]       = useState(0)
   const fileRef = useRef()
+  const excelRef = useRef()
 
   // ── Helpers ───────────────────────────────────────────────
   const proyectoName   = id => proyectos.find(p => p.id === id)?.nombre || '—'
@@ -263,59 +265,78 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
   // ── Pegar el cuadro desde Excel ───────────────────────────
   // Se espera una fila por ítem con: REF, DESCRIPCIÓN, UM, CANTIDAD, VR. UNITARIO
   // (separadas por tabulación, que es como pega Excel). Ignora encabezados y filas sin cantidad.
-  function parsearPegado(texto) {
+  // Lee una fila del cuadro venga de Excel o de un pegado: toma el código,
+  // la descripción, la unidad, la cantidad y el valor unitario, y descarta
+  // ancho, alto, subtotales y filas de totales.
+  function filaAItem(celdas) {
     const num = v => {
-      const t = String(v || '').replace(/[$\s]/g, '')
+      if (typeof v === 'number') return v
+      const t = String(v ?? '').replace(/[$\s]/g, '')
       if (!t || !/[0-9]/.test(t)) return null
       const limpio = t.replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')
       const n = Number(limpio)
       return isNaN(n) ? null : n
     }
+    const cel = celdas.map(c => (typeof c === 'number' ? c : String(c ?? '').trim()))
+      .filter(c => c !== '')
+    if (cel.length < 3) return null
 
+    const ref = String(cel[0])
+    if (!ref || ref.length > 12 || /\s/.test(ref) || num(ref) !== null) return null
+
+    const nums = []
+    cel.forEach((c, i) => { if (i > 0) { const n = num(c); if (n !== null) nums.push({ n, i }) } })
+    if (nums.length < 2) return null
+
+    const grandes = nums.filter(x => x.n >= 1000)
+    if (!grandes.length) return null
+    const precio = grandes.length > 1 && grandes[grandes.length - 1].n > grandes[grandes.length - 2].n
+      ? grandes[grandes.length - 2] : grandes[grandes.length - 1]
+
+    const antes = nums.filter(x => x.i < precio.i)
+    const cantidad = antes.length ? antes[antes.length - 1] : null
+    if (!cantidad || cantidad.n <= 0) return null
+
+    let unidad = 'und'
+    for (let i = cantidad.i - 1; i > 0; i--) {
+      const c = String(cel[i])
+      if (c.length <= 4 && /^[a-zA-Z0-9]+$/.test(c) && num(c) === null) { unidad = c.toLowerCase(); break }
+    }
+    const desc = cel.slice(1).filter(c => typeof c === 'string' && num(c) === null && c !== unidad)
+      .sort((x, y) => y.length - x.length)[0] || ''
+
+    return { ref, descripcion: String(desc).slice(0, 200), unidad, cantidad: cantidad.n, vr_unitario: precio.n }
+  }
+
+  // ── Cargar el cuadro desde un Excel ───────────────────────
+  async function handleExcelChange(e) {
+    const f = e.target.files[0]
+    if (!f) return
+    try {
+      const buf = await f.arrayBuffer()
+      const wb = XLSX.read(buf, { type: 'array' })
+      const items = []
+      for (const hoja of wb.SheetNames) {
+        const filas = XLSX.utils.sheet_to_json(wb.Sheets[hoja], { header: 1, blankrows: false, defval: '' })
+        for (const fila of filas) {
+          const it = filaAItem(fila)
+          if (it) items.push({ ...it, orden: items.length + 1 })
+        }
+      }
+      if (!items.length) { toast('No se reconoció ninguna fila en el Excel', 'err'); return }
+      setParsedItems(items)
+      setExtractInfo({ manual: true })
+      setArchivo(f)
+      toast(`${items.length} ítems leídos del Excel`, 'ok')
+    } catch (err) { toast('Error leyendo el Excel: ' + err.message, 'err') }
+  }
+
+  function parsearPegado(texto) {
     const items = []
     for (const linea of texto.split('\n')) {
-      // Se aceptan columnas separadas por tabulación (Excel) o por 2+ espacios
       const celdas = linea.includes('\t') ? linea.split('\t') : linea.split(/ {2,}/)
-      const cel = celdas.map(c => String(c || '').trim()).filter(c => c !== '')
-      if (cel.length < 3) continue
-
-      // El código es la primera celda corta sin espacios (P1, CL-4, PE3, ZOC…)
-      const ref = cel[0]
-      if (!ref || ref.length > 12 || /\s/.test(ref)) continue
-
-      // Los números de la fila, de izquierda a derecha
-      const nums = []
-      cel.forEach((c, i) => { const n = num(c); if (n !== null && i > 0) nums.push({ n, i }) })
-      if (nums.length < 2) continue
-
-      // El precio unitario es el número grande de más a la derecha que no sea el total;
-      // se toma el mayor de los dos últimos descartando el último si es mucho más grande.
-      let precio = null, cantidad = null
-      const grandes = nums.filter(x => x.n >= 1000)
-      if (grandes.length) {
-        // si el último es el subtotal (precio x cantidad), se descarta
-        precio = grandes.length > 1 && grandes[grandes.length - 1].n > grandes[grandes.length - 2].n
-          ? grandes[grandes.length - 2] : grandes[grandes.length - 1]
-      }
-      const antes = nums.filter(x => !precio || x.i < precio.i)
-      cantidad = antes.length ? antes[antes.length - 1] : null
-      if (!precio || !cantidad || cantidad.n <= 0) continue
-
-      // La unidad es la celda de texto corta antes de la cantidad (und, ml, m2…)
-      let unidad = 'und'
-      for (let i = cantidad.i - 1; i > 0; i--) {
-        const c = cel[i]
-        if (c && c.length <= 4 && /^[a-zA-Z0-9]+$/.test(c) && num(c) === null) { unidad = c.toLowerCase(); break }
-      }
-
-      // La descripción es la celda de texto más larga de la fila
-      const desc = cel.slice(1).filter(c => num(c) === null && c !== unidad)
-        .sort((x, y) => y.length - x.length)[0] || ''
-
-      items.push({
-        ref, descripcion: desc.slice(0, 200), unidad,
-        cantidad: cantidad.n, vr_unitario: precio.n, orden: items.length + 1,
-      })
+      const it = filaAItem(celdas)
+      if (it) items.push({ ...it, orden: items.length + 1 })
     }
     return items
   }
@@ -496,6 +517,15 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
                 </div>
               )}
             </div>
+
+            {/* Cargar Excel */}
+            {!extrayendo && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+                <input ref={excelRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={handleExcelChange} />
+                <Btn onClick={() => excelRef.current?.click()}>📊 Cargar Excel del contrato</Btn>
+                <span style={{ fontSize: 12, color: C.g5 }}>Lee el cuadro tal como está, con celdas combinadas y todo.</span>
+              </div>
+            )}
 
             {/* Pegar desde Excel */}
             {!extrayendo && (
