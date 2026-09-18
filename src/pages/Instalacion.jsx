@@ -90,7 +90,34 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
     setSaving(false)
   }
 
-  // ── Guardar equivalencias de un ítem ──────────────────────
+  // ── Crear la obra en Gestión de Obras desde el ERP ────────
+  async function crearObra() {
+    setSaving(true)
+    try {
+      const nueva = {
+        id: `o${Date.now()}`, nombre: (proySel?.nombre || '').trim(), direccion: '',
+        estado: 'activa', pisos: [], tipologias: [],
+        instaladores_autorizados: [], aptos_habilitados: {}, solicitudes: [], precios_override: {},
+        coordinador_id: '',
+      }
+      const { data: obraCreada, error } = await supabase.from('obras').insert(nueva).select().single()
+      if (error) throw error
+      const { data: proy, error: e2 } = await supabase.from('proyectos')
+        .update({ obra_id: obraCreada.id }).eq('id', proySel.id).select().single()
+      if (e2) throw e2
+      setDbData(d => ({
+        ...d,
+        obras: [...(d.obras || []), obraCreada],
+        proyectos: d.proyectos.map(p => p.id === proy.id ? proy : p),
+      }))
+      setProySel(proy)
+      toast('Obra creada y vinculada', 'ok')
+      setModalObra(false)
+    } catch (e) { toast('Error: ' + e.message, 'err') }
+    setSaving(false)
+  }
+
+  // ── Partes del ítem (lo que se paga a la gente) ───────────
 
 
   // ── Partes del ítem (lo que se paga a la gente) ───────────
@@ -276,6 +303,15 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
             <p style={{ fontSize: 12, color: C.g5, marginTop: 10 }}>
               Al vincular, el avance que los coordinadores chulean en Gestión de Obras se lee automáticamente acá.
             </p>
+            <div style={{ borderTop: `1px solid ${C.g2}`, margin: '16px 0 12px', paddingTop: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>¿La obra todavía no existe allá?</div>
+              <div style={{ fontSize: 12, color: C.g5, marginBottom: 8 }}>
+                Se crea con el nombre del proyecto y queda vinculada. Los pisos, apartamentos y tipologías se arman en Gestión de Obras.
+              </div>
+              <Btn onClick={crearObra} disabled={saving}>
+                + Crear "{proySel?.nombre}" en Gestión de Obras
+              </Btn>
+            </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
               <Btn onClick={() => setModalObra(false)}>Cancelar</Btn>
               <Btn variant="primary" onClick={guardarObra} disabled={saving}>{saving ? 'Guardando…' : 'Guardar'}</Btn>
