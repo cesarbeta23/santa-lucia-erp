@@ -306,6 +306,24 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
               <h3 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 700, color: C.g5, textTransform: 'uppercase', letterSpacing: '.06em' }}>
                 💵 Pagado en instalación
               </h3>
+
+              {/* Margen: lo que vale lo instalado contra lo que se le pagó a la gente */}
+              {(() => {
+                const itsProy = cs.flatMap(c => itemsDe(c.id))
+                const valorInstalado = itsProy.reduce((s2, it) => s2 + instaladoItem(obra, it.id) * Number(it.vr_unitario || 0), 0)
+                const pagado = tot.inst + tot.det + tot.adic
+                const margen = valorInstalado - pagado
+                const pct = valorInstalado > 0 ? margen / valorInstalado * 100 : 0
+                if (valorInstalado === 0 && pagado === 0) return null
+                return (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 14 }}>
+                    <Stat label="Vale lo instalado" value={fmt(valorInstalado)} sub="a precio de contrato" />
+                    <Stat label="Pagado a la gente" value={fmt(pagado)} color={C.am} />
+                    <Stat label="Margen de instalación" value={fmt(margen)}
+                      color={margen >= 0 ? C.gnD : C.rd} sub={`${Math.round(pct)}% de lo instalado`} />
+                  </div>
+                )
+              })()}
               {pagos.length === 0 ? (
                 <div style={{ ...card, padding: '14px 18px', fontSize: 13, color: C.g5 }}>
                   Todavía no hay cortes cerrados de esta obra.
