@@ -121,6 +121,9 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
   const [editItems, setEditItems]     = useState(false)
   const [pegado, setPegado]           = useState('')
   const [avanceIA, setAvanceIA]       = useState(0)
+  const [modalItem, setModalItem]     = useState(false)
+  const [delItem, setDelItem]         = useState(null)
+  const [itemForm, setItemForm]       = useState({ ref: '', descripcion: '', unidad: 'und', cantidad: '', vr_unitario: '' })
   const fileRef = useRef()
   const excelRef = useRef()
 
@@ -256,6 +259,15 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
         ...d,
         items_contrato: [...d.items_contrato.filter(i => i.contrato_id !== contratoSel.id), ...data],
       }))
+      // Si el contrato no tiene valor, se toma la suma de los ítems
+      const suma = parsedItems.reduce((acc, i) => acc + Number(i.cantidad || 0) * Number(i.vr_unitario || 0), 0)
+      if (suma > 0 && !Number(contratoSel.valor_total)) {
+        const { data: c2 } = await supabase.from('contratos').update({ valor_total: suma }).eq('id', contratoSel.id).select().single()
+        if (c2) {
+          setContratoSel(c2)
+          setDbData(d => ({ ...d, contratos: d.contratos.map(c => c.id === c2.id ? c2 : c) }))
+        }
+      }
       toast(`${data.length} ítems guardados`, 'ok')
       setModalItems(false)
     } catch (e) { toast('Error guardando: ' + e.message, 'err') }
@@ -362,11 +374,83 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
     toast(`${items.length} ítems leídos`, 'ok')
   }
 
+  // ── Agregar un ítem suelto al contrato ya cargado ─────────
+  async function guardarItemSuelto() {
+    if (!itemForm.ref || !itemForm.descripcion) { toast('Ingresa la referencia y la descripción', 'err'); return }
+    try {
+      const actuales = items_contrato.filter(i => i.contrato_id === contratoSel.id)
+      const fila = {
+        contrato_id: contratoSel.id,
+        ref: itemForm.ref.trim(),
+        descripcion: itemForm.descripcion.trim(),
+        unidad: itemForm.unidad || 'und',
+        cantidad: Number(itemForm.cantidad) || 0,
+        vr_unitario: Number(itemForm.vr_unitario) || 0,
+        orden: actuales.length + 1,
+      }
+      const { data, error } = await supabase.from('items_contrato').insert(fila).select().single()
+      if (error) throw error
+      setDbData(d => ({ ...d, items_contrato: [...d.items_contrato, data] }))
+      toast('Ítem agregado', 'ok')
+      setModalItem(false)
+      setItemForm({ ref: '', descripcion: '', unidad: 'und', cantidad: '', vr_unitario: '' })
+    } catch (e) { toast('Error: ' + e.message, 'err') }
+  }
+
+  async function eliminarItem(id) {
+    try {
+      const { error } = await supabase.from('items_contrato').delete().eq('id', id)
+      if (error) throw error
+      setDbData(d => ({ ...d, items_contrato: d.items_contrato.filter(i => i.id !== id) }))
+      toast('Ítem eliminado', 'ok')
+    } catch (e) { toast('Error: ' + e.message, 'err') }
+  }
+
   function updateItem(idx, field, val) {
     setParsedItems(items => items.map((it, i) => i === idx ? { ...it, [field]: val } : it))
   }
 
   // ── Vista detalle ─────────────────────────────────────────
+  const modalDeContrato = modalContrato ? (
+        <Modal title={editId ? 'Editar contrato' : 'Nuevo contrato'} onClose={() => setModalContrato(false)} wide>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
+            <div style={{ gridColumn: '1/-1' }}>
+              <Sel label="Proyecto *" value={form.proyecto_id} onChange={e => setForm(f => ({ ...f, proyecto_id: e.target.value }))}>
+                <option value="">— Seleccionar proyecto —</option>
+                {proyectos.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+              </Sel>
+            </div>
+            <Sel label="Tipo *" value={form.tipo} onChange={e => setForm(f => ({ ...f, tipo: e.target.value, factor_iva: e.target.value==='instalacion'?1.019:1.19 }))}>
+              {Object.entries(TIPOS).map(([k,v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+            </Sel>
+            <Inp label="Número de contrato" value={form.numero} onChange={e => setForm(f => ({ ...f, numero: e.target.value }))} placeholder="Ej: 1320182" />
+            <Inp label="Valor total" value={form.valor_total} onChange={e => setForm(f => ({ ...f, valor_total: e.target.value }))} placeholder="535132590" hint="Sin puntos ni comas" />
+            <Sel label="Estado" value={form.estado} onChange={e => setForm(f => ({ ...f, estado: e.target.value }))}>
+              {Object.entries(ESTADOS_C).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
+            </Sel>
+            <div />
+            <Inp label="Fecha inicio" type="date" value={form.fecha_inicio||''} onChange={e => setForm(f => ({ ...f, fecha_inicio: e.target.value }))} />
+            <Inp label="Fecha fin" type="date" value={form.fecha_fin||''} onChange={e => setForm(f => ({ ...f, fecha_fin: e.target.value }))} />
+            <div style={{ gridColumn: '1/-1' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, marginBottom: 14 }}>
+                <input type="checkbox" checked={form.iva_incluido} onChange={e => setForm(f => ({ ...f, iva_incluido: e.target.checked }))} />
+                IVA incluido en el precio unitario
+                <span style={{ fontSize: 12, color: C.g4 }}>
+                  {form.tipo === 'instalacion' ? '(instalación: IVA 1.9% = 19% sobre utilidad 10%)' : '(suministro: IVA 19%)'}
+                </span>
+              </label>
+            </div>
+            <div style={{ gridColumn: '1/-1' }}>
+              <Txt label="Notas" value={form.notas||''} onChange={e => setForm(f => ({ ...f, notas: e.target.value }))} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
+            <Btn onClick={() => setModalContrato(false)}>Cancelar</Btn>
+            <Btn variant="primary" onClick={guardarContrato}>{editId ? 'Guardar' : 'Crear y cargar ítems →'}</Btn>
+          </div>
+        </Modal>
+  ) : null
+
   if (vista === 'detalle' && contratoSel) {
     const items     = items_contrato.filter(i => i.contrato_id === contratoSel.id).sort((a, b) => (a.orden||0)-(b.orden||0))
     const proyecto  = proyectos.find(p => p.id === contratoSel.proyecto_id)
@@ -400,6 +484,7 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
             </div>
           </div>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+            {items.length > 0 && <Btn onClick={() => setModalItem(true)}>+ Agregar ítem</Btn>}
             <Btn onClick={() => abrirModalItems(contratoSel)}>
               {items.length ? '🔄 Recargar ítems' : '+ Cargar ítems desde PDF'}
             </Btn>
@@ -439,7 +524,7 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ background: C.g0 }}>
-                  {['#','Ref','Descripción','UM','Cantidad','Vr. Unitario','Total contrato'].map((h,i) => (
+                  {['#','Ref','Descripción','UM','Cantidad','Vr. Unitario','Total contrato',''].map((h,i) => (
                     <th key={i} style={{ padding: '10px 12px', textAlign: i > 3 ? 'right' : 'left', fontSize: 11, fontWeight: 700, color: C.g5, textTransform: 'uppercase', letterSpacing: '.06em', borderBottom: `2px solid ${C.g2}` }}>{h}</th>
                   ))}
                 </tr>
@@ -470,6 +555,12 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
                       </td>
                     <td style={{ padding: '9px 12px', textAlign: 'right' }}>{fmt(item.vr_unitario)}</td>
                     <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600 }}>{fmt(Number(item.cantidad)*Number(item.vr_unitario))}</td>
+                    <td style={{ padding: '9px 6px', textAlign: 'center' }}>
+                      <span title="Eliminar ítem" onClick={() => setDelItem(item)}
+                        style={{ cursor: 'pointer', color: C.g3, fontWeight: 700 }}
+                        onMouseEnter={e => e.currentTarget.style.color = C.rd}
+                        onMouseLeave={e => e.currentTarget.style.color = C.g3}>✕</span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -571,15 +662,20 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                   <span style={{ fontSize: 13, fontWeight: 600 }}>{parsedItems.length} ítems detectados</span>
-                  <Btn size="sm" onClick={() => setEditItems(!editItems)}>
-                    {editItems ? '👁️ Ver' : '✏️ Editar'}
-                  </Btn>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <Btn size="sm" onClick={() => { setEditItems(true); setParsedItems(x => [...x, { ref: '', descripcion: '', unidad: 'und', cantidad: 0, vr_unitario: 0, orden: x.length + 1 }]) }}>
+                      + Ítem manual
+                    </Btn>
+                    <Btn size="sm" onClick={() => setEditItems(!editItems)}>
+                      {editItems ? '👁️ Ver' : '✏️ Editar'}
+                    </Btn>
+                  </div>
                 </div>
                 <div style={{ maxHeight: 340, overflowY: 'auto', border: `1px solid ${C.g2}`, borderRadius: 8, marginBottom: 16 }}>
                   <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
                     <thead style={{ background: C.g0, position: 'sticky', top: 0 }}>
                       <tr>
-                        {['#','Ref','Descripción','UM','Cantidad','Vr. Unitario','Total'].map((h,i) => (
+                        {['#','Ref','Descripción','UM','Cantidad','Vr. Unitario','Total', ...(editItems ? [''] : [])].map((h,i) => (
                           <th key={i} style={{ padding: '8px 10px', textAlign: i > 3 ? 'right' : 'left', fontSize: 11, color: C.g5, fontWeight: 700, borderBottom: `1px solid ${C.g2}` }}>{h}</th>
                         ))}
                       </tr>
@@ -616,6 +712,12 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
                           <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 600 }}>
                             {fmt(Number(it.cantidad)*Number(it.vr_unitario))}
                           </td>
+                          {editItems && (
+                            <td style={{ padding: '7px 6px', textAlign: 'center' }}>
+                              <span title="Quitar ítem" onClick={() => setParsedItems(x => x.filter((_, j) => j !== i).map((y, j) => ({ ...y, orden: j + 1 })))}
+                                style={{ cursor: 'pointer', color: C.rd, fontWeight: 700 }}>✕</span>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -639,6 +741,40 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
                   {savingItems ? 'Guardando…' : `✓ Guardar ${parsedItems.length} ítems`}
                 </Btn>
               )}
+            </div>
+          </Modal>
+        )}
+        {modalDeContrato}
+
+        {delItem && (
+          <Modal title="Eliminar ítem" onClose={() => setDelItem(null)}>
+            <p style={{ fontSize: 14, marginBottom: 20 }}>
+              ¿Eliminar <strong>{delItem.ref}</strong> — {delItem.descripcion}?
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <Btn onClick={() => setDelItem(null)}>Cancelar</Btn>
+              <Btn variant="danger" onClick={() => { eliminarItem(delItem.id); setDelItem(null) }}>Sí, eliminar</Btn>
+            </div>
+          </Modal>
+        )}
+
+        {modalItem && (
+          <Modal title="Agregar ítem al contrato" onClose={() => setModalItem(false)} wide>
+            <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '0 16px' }}>
+              <Inp label="Ref *" value={itemForm.ref} onChange={e => setItemForm(f => ({ ...f, ref: e.target.value }))} placeholder="P-07" />
+              <Inp label="Descripción *" value={itemForm.descripcion} onChange={e => setItemForm(f => ({ ...f, descripcion: e.target.value }))} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0 16px' }}>
+              <Inp label="Unidad" value={itemForm.unidad} onChange={e => setItemForm(f => ({ ...f, unidad: e.target.value }))} placeholder="und" />
+              <Inp label="Cantidad" type="number" value={itemForm.cantidad} onChange={e => setItemForm(f => ({ ...f, cantidad: e.target.value }))} />
+              <Inp label="Valor unitario" type="number" value={itemForm.vr_unitario} onChange={e => setItemForm(f => ({ ...f, vr_unitario: e.target.value }))} hint="Sin puntos ni comas" />
+            </div>
+            <div style={{ fontSize: 12, color: C.g5, marginBottom: 12 }}>
+              Total del ítem: <strong>{fmt((Number(itemForm.cantidad) || 0) * (Number(itemForm.vr_unitario) || 0))}</strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <Btn onClick={() => setModalItem(false)}>Cancelar</Btn>
+              <Btn variant="primary" onClick={guardarItemSuelto}>Agregar</Btn>
             </div>
           </Modal>
         )}
@@ -731,45 +867,7 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
       )}
 
       {/* Modal crear/editar */}
-      {modalContrato && (
-        <Modal title={editId ? 'Editar contrato' : 'Nuevo contrato'} onClose={() => setModalContrato(false)} wide>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
-            <div style={{ gridColumn: '1/-1' }}>
-              <Sel label="Proyecto *" value={form.proyecto_id} onChange={e => setForm(f => ({ ...f, proyecto_id: e.target.value }))}>
-                <option value="">— Seleccionar proyecto —</option>
-                {proyectos.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-              </Sel>
-            </div>
-            <Sel label="Tipo *" value={form.tipo} onChange={e => setForm(f => ({ ...f, tipo: e.target.value, factor_iva: e.target.value==='instalacion'?1.019:1.19 }))}>
-              {Object.entries(TIPOS).map(([k,v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
-            </Sel>
-            <Inp label="Número de contrato" value={form.numero} onChange={e => setForm(f => ({ ...f, numero: e.target.value }))} placeholder="Ej: 1320182" />
-            <Inp label="Valor total" value={form.valor_total} onChange={e => setForm(f => ({ ...f, valor_total: e.target.value }))} placeholder="535132590" hint="Sin puntos ni comas" />
-            <Sel label="Estado" value={form.estado} onChange={e => setForm(f => ({ ...f, estado: e.target.value }))}>
-              {Object.entries(ESTADOS_C).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
-            </Sel>
-            <div />
-            <Inp label="Fecha inicio" type="date" value={form.fecha_inicio||''} onChange={e => setForm(f => ({ ...f, fecha_inicio: e.target.value }))} />
-            <Inp label="Fecha fin" type="date" value={form.fecha_fin||''} onChange={e => setForm(f => ({ ...f, fecha_fin: e.target.value }))} />
-            <div style={{ gridColumn: '1/-1' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 14, marginBottom: 14 }}>
-                <input type="checkbox" checked={form.iva_incluido} onChange={e => setForm(f => ({ ...f, iva_incluido: e.target.checked }))} />
-                IVA incluido en el precio unitario
-                <span style={{ fontSize: 12, color: C.g4 }}>
-                  {form.tipo === 'instalacion' ? '(instalación: IVA 1.9% = 19% sobre utilidad 10%)' : '(suministro: IVA 19%)'}
-                </span>
-              </label>
-            </div>
-            <div style={{ gridColumn: '1/-1' }}>
-              <Txt label="Notas" value={form.notas||''} onChange={e => setForm(f => ({ ...f, notas: e.target.value }))} />
-            </div>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
-            <Btn onClick={() => setModalContrato(false)}>Cancelar</Btn>
-            <Btn variant="primary" onClick={guardarContrato}>{editId ? 'Guardar' : 'Crear y cargar ítems →'}</Btn>
-          </div>
-        </Modal>
-      )}
+      {modalDeContrato}
 
       {/* Confirmar eliminar */}
       {delId && (
