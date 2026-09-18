@@ -268,6 +268,8 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
   // Lee una fila del cuadro venga de Excel o de un pegado: toma el código,
   // la descripción, la unidad, la cantidad y el valor unitario, y descarta
   // ancho, alto, subtotales y filas de totales.
+  const UNIDADES = ['und', 'un', 'ml', 'm2', 'm3', 'gl', 'kg', 'apto', 'ud']
+
   function filaAItem(celdas) {
     const num = v => {
       if (typeof v === 'number') return v
@@ -281,11 +283,22 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
       .filter(c => c !== '')
     if (cel.length < 3) return null
 
-    const ref = String(cel[0])
-    if (!ref || ref.length > 12 || /\s/.test(ref) || num(ref) !== null) return null
+    // El código puede venir en la 1ª, 2ª o 3ª columna (antes suele ir la ubicación,
+    // que viene combinada en el Excel). Se busca algo tipo P1, P-01, CL-4, PE3, ZOC.
+    let iRef = -1
+    for (let i = 0; i < Math.min(cel.length, 4); i++) {
+      const c = String(cel[i])
+      // debe traer al menos un número o un guion (P1, CL-4, PE3); así no confunde
+      // con la unidad (und, ml, m2) ni con palabras sueltas
+      const esCodigo = /^[A-Za-z]{1,4}[-\s]?\d{1,3}$/.test(c)                       // P1, P-01, CL-4, PE3
+        || (/^[A-Za-z]{2,4}$/.test(c) && !UNIDADES.includes(c.toLowerCase()))          // ZOC, MUE
+      if (c.length <= 10 && esCodigo && num(c) === null) { iRef = i; break }
+    }
+    if (iRef === -1) return null
+    const ref = String(cel[iRef]).replace(/\s+/g, '')
 
     const nums = []
-    cel.forEach((c, i) => { if (i > 0) { const n = num(c); if (n !== null) nums.push({ n, i }) } })
+    cel.forEach((c, i) => { if (i > iRef) { const n = num(c); if (n !== null) nums.push({ n, i }) } })
     if (nums.length < 2) return null
 
     const grandes = nums.filter(x => x.n >= 1000)
@@ -298,11 +311,11 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
     if (!cantidad || cantidad.n <= 0) return null
 
     let unidad = 'und'
-    for (let i = cantidad.i - 1; i > 0; i--) {
+    for (let i = cantidad.i - 1; i > iRef; i--) {
       const c = String(cel[i])
       if (c.length <= 4 && /^[a-zA-Z0-9]+$/.test(c) && num(c) === null) { unidad = c.toLowerCase(); break }
     }
-    const desc = cel.slice(1).filter(c => typeof c === 'string' && num(c) === null && c !== unidad)
+    const desc = cel.slice(iRef + 1).filter(c => typeof c === 'string' && num(c) === null && c !== unidad)
       .sort((x, y) => y.length - x.length)[0] || ''
 
     return { ref, descripcion: String(desc).slice(0, 200), unidad, cantidad: cantidad.n, vr_unitario: precio.n }
