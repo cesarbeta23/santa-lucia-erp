@@ -265,21 +265,59 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
   // (separadas por tabulación, que es como pega Excel). Ignora encabezados y filas sin cantidad.
   function parsearPegado(texto) {
     const num = v => {
-      const limpio = String(v || '').replace(/[$\s]/g, '').replace(/\.(?=\d{3}\b)/g, '').replace(',', '.')
+      const t = String(v || '').replace(/[$\s]/g, '')
+      if (!t || !/[0-9]/.test(t)) return null
+      const limpio = t.replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')
       const n = Number(limpio)
-      return isNaN(n) ? 0 : n
+      return isNaN(n) ? null : n
     }
-    return texto.split('\n').map(l => l.split('\t')).filter(c => c.length >= 4)
-      .map((c, i) => ({
-        ref: (c[0] || '').trim(),
-        descripcion: (c[1] || '').trim(),
-        unidad: (c[2] || 'und').trim() || 'und',
-        cantidad: num(c[3]),
-        vr_unitario: num(c[4]),
-        orden: i + 1,
-      }))
-      .filter(it => it.ref && it.cantidad > 0)
-      .map((it, i) => ({ ...it, orden: i + 1 }))
+
+    const items = []
+    for (const linea of texto.split('\n')) {
+      // Se aceptan columnas separadas por tabulación (Excel) o por 2+ espacios
+      const celdas = linea.includes('\t') ? linea.split('\t') : linea.split(/ {2,}/)
+      const cel = celdas.map(c => String(c || '').trim()).filter(c => c !== '')
+      if (cel.length < 3) continue
+
+      // El código es la primera celda corta sin espacios (P1, CL-4, PE3, ZOC…)
+      const ref = cel[0]
+      if (!ref || ref.length > 12 || /\s/.test(ref)) continue
+
+      // Los números de la fila, de izquierda a derecha
+      const nums = []
+      cel.forEach((c, i) => { const n = num(c); if (n !== null && i > 0) nums.push({ n, i }) })
+      if (nums.length < 2) continue
+
+      // El precio unitario es el número grande de más a la derecha que no sea el total;
+      // se toma el mayor de los dos últimos descartando el último si es mucho más grande.
+      let precio = null, cantidad = null
+      const grandes = nums.filter(x => x.n >= 1000)
+      if (grandes.length) {
+        // si el último es el subtotal (precio x cantidad), se descarta
+        precio = grandes.length > 1 && grandes[grandes.length - 1].n > grandes[grandes.length - 2].n
+          ? grandes[grandes.length - 2] : grandes[grandes.length - 1]
+      }
+      const antes = nums.filter(x => !precio || x.i < precio.i)
+      cantidad = antes.length ? antes[antes.length - 1] : null
+      if (!precio || !cantidad || cantidad.n <= 0) continue
+
+      // La unidad es la celda de texto corta antes de la cantidad (und, ml, m2…)
+      let unidad = 'und'
+      for (let i = cantidad.i - 1; i > 0; i--) {
+        const c = cel[i]
+        if (c && c.length <= 4 && /^[a-zA-Z0-9]+$/.test(c) && num(c) === null) { unidad = c.toLowerCase(); break }
+      }
+
+      // La descripción es la celda de texto más larga de la fila
+      const desc = cel.slice(1).filter(c => num(c) === null && c !== unidad)
+        .sort((x, y) => y.length - x.length)[0] || ''
+
+      items.push({
+        ref, descripcion: desc.slice(0, 200), unidad,
+        cantidad: cantidad.n, vr_unitario: precio.n, orden: items.length + 1,
+      })
+    }
+    return items
   }
 
   function aplicarPegado() {
@@ -467,7 +505,7 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
                   <Btn size="sm" onClick={aplicarPegado} disabled={!pegado.trim()}>Leer lo pegado</Btn>
                 </div>
                 <textarea value={pegado} onChange={e => setPegado(e.target.value)} rows={4}
-                  placeholder={'Copiá en Excel las columnas REF, DESCRIPCIÓN, UM, CANTIDAD y VR. UNITARIO (en ese orden) y pegalas acá.\nEj:  P1\tPuerta baño\tund\t430\t607590'}
+                  placeholder={'Copiá las filas del cuadro tal como están en el Excel (con ancho, alto y todo) y pegalas acá.\nLee el código, la descripción, la unidad, la cantidad y el valor unitario.'}
                   style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', border: `1px solid ${C.g2}`, borderRadius: 8, fontSize: 12, fontFamily: 'ui-monospace, monospace', resize: 'vertical' }} />
               </div>
             )}
