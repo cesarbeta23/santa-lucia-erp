@@ -8,7 +8,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
   const {
     proyectos = [], contratos = [], items_contrato = [], constructoras = [],
     actas_facturacion = [], items_acta_facturacion = [],
-    obras = [], elementos = [], mapa_items_instalacion = [], subitems_instalacion = [],
+    obras = [], elementos = [], subitems_instalacion = [],
     liquidaciones = [], usuarios = [],
   } = dbData
   const editable = puedeEditar ? puedeEditar('instalacion') : true
@@ -22,8 +22,6 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
   const [tab, setTab]             = useState('avance')   // avance | aptos | mapa
   const [modalObra, setModalObra] = useState(false)
   const [obraForm, setObraForm]   = useState('')
-  const [mapaItem, setMapaItem]   = useState(null)       // ítem al que se le están eligiendo elementos
-  const [selEls, setSelEls]       = useState([])
   const [partesItem, setPartesItem] = useState(null)     // ítem al que se le están armando las partes
   const [partesTmp, setPartesTmp]   = useState([])
   const [saving, setSaving]       = useState(false)
@@ -34,18 +32,11 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
   const itemsDe   = cid => items_contrato.filter(i => i.contrato_id === cid).sort((a, b) => (a.orden || 0) - (b.orden || 0))
   const obraDe    = proy => obras.find(o => o.id === proy?.obra_id) || null
   const partesDe  = itemId => subitems_instalacion.filter(p => p.item_contrato_id === itemId).sort((a, b) => (a.orden || 0) - (b.orden || 0))
-  const elsDeItem = itemId => [...new Set([
-    ...mapa_items_instalacion.filter(m => m.item_contrato_id === itemId).map(m => m.elemento_id),
-    ...partesDe(itemId).filter(p => p.elemento_id).map(p => p.elemento_id),
-  ])]
+  const elsDeItem = itemId => [...new Set(partesDe(itemId).filter(p => p.elemento_id).map(p => p.elemento_id))]
   const nombreEl  = eid => elementos.find(e => e.id === eid)?.nombre || eid
 
   // Un elemento solo puede pertenecer a un ítem del contrato.
   // Devuelve el ítem que ya lo tiene (si es otro distinto al que se está editando).
-  function itemQueUsa(eid, exceptoItemId) {
-    const m = mapa_items_instalacion.find(x => x.elemento_id === eid && x.contrato_id === contratoSel?.id && x.item_contrato_id !== exceptoItemId)
-    return m ? items_contrato.find(i => i.id === m.item_contrato_id) : null
-  }
 
   // Todos los apartamentos de la obra vinculada
   const aptosDe = obra => (obra?.pisos || []).flatMap(p =>
@@ -102,34 +93,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
   }
 
   // ── Guardar equivalencias de un ítem ──────────────────────
-  function abrirMapa(item) {
-    setMapaItem(item)
-    setSelEls(elsDeItem(item.id))
-  }
 
-  async function guardarMapa() {
-    setSaving(true)
-    try {
-      await supabase.from('mapa_items_instalacion').delete().eq('item_contrato_id', mapaItem.id)
-      let nuevos = []
-      if (selEls.length) {
-        const rows = selEls.map(eid => ({ contrato_id: contratoSel.id, item_contrato_id: mapaItem.id, elemento_id: eid }))
-        const { data, error } = await supabase.from('mapa_items_instalacion').insert(rows).select()
-        if (error) throw error
-        nuevos = data
-      }
-      setDbData(d => ({
-        ...d,
-        mapa_items_instalacion: [
-          ...(d.mapa_items_instalacion || []).filter(m => m.item_contrato_id !== mapaItem.id),
-          ...nuevos,
-        ],
-      }))
-      toast('Equivalencias guardadas', 'ok')
-      setMapaItem(null)
-    } catch (e) { toast('Error: ' + e.message, 'err') }
-    setSaving(false)
-  }
 
   // ── Partes del ítem (lo que se paga a la gente) ───────────
   function abrirPartes(item) {
@@ -321,8 +285,8 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                     {verValorContrato && <span style={{ fontSize: 12, color: C.g5, marginLeft: 12 }}>{fmt(c.valor_total)}</span>}
                   </div>
                   {sinMapa > 0
-                    ? <Badge color="amber">{sinMapa} ítem(s) sin equivalencias</Badge>
-                    : <Badge color="green">Equivalencias listas</Badge>}
+                    ? <Badge color="amber">{sinMapa} ítem(s) sin desglosar</Badge>
+                    : <Badge color="green">Desglose listo</Badge>}
                 </div>
                 <Progress value={pct} />
                 <div style={{ fontSize: 11, color: C.g5, marginTop: 4 }}>
@@ -466,7 +430,6 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
         {tabBtn('avance', 'Avance por ítem')}
         {tabBtn('aptos', 'Por apartamento')}
         {tabBtn('partes', 'Partes y pagos')}
-        {tabBtn('mapa', 'Equivalencias')}
       </div>
 
       {!obra && (
@@ -673,20 +636,6 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                   {elsObra.map(el => <option key={el.id} value={el.id}>{el.nombre}</option>)}
                 </select>
                 <Btn size="sm" variant="danger" onClick={() => setPartesTmp(t => t.filter((_, j) => j !== i))}>✕</Btn>
-                <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 8, margin: '-2px 0 6px' }}>
-                  <span style={{ fontSize: 11, color: C.g5, whiteSpace: 'nowrap' }}>Elemento en la obra:</span>
-                  <select value={p.elemento_id || ''}
-                    onChange={e => setPartesTmp(t => t.map((x, j) => j === i ? { ...x, elemento_id: e.target.value || null } : x))}
-                    style={{ flex: 1, padding: '5px 8px', border: `1px solid ${C.g2}`, borderRadius: 8, fontSize: 12 }}>
-                    <option value="">— Crear uno nuevo al enviar a la obra —</option>
-                    {elsObra.map(el => {
-                      const ocupado = subitems_instalacion.find(x => x.elemento_id === el.id && x.id !== p.id)
-                      return <option key={el.id} value={el.id} disabled={!!ocupado}>
-                        {el.nombre}{ocupado ? ' (ya usado en otra parte)' : ''}
-                      </option>
-                    })}
-                  </select>
-                </div>
               </div>
             ))}
           </div>
@@ -704,77 +653,6 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
         </Modal>
       )}
 
-      {/* ── Equivalencias ── */}
-      {tab === 'mapa' && (
-        <div>
-          <div style={{ ...card, padding: '12px 16px', marginBottom: 14, fontSize: 13, color: C.g5 }}>
-            Cada ítem del contrato se arma con los elementos que se chulean en Gestión de Obras.
-            Ejemplo: "Puerta WC social" = Puerta Wc Social + CHAPA + TOPE RESORTE.
-            El ítem cuenta como instalado en un apartamento solo cuando todas sus partes están chuleadas.
-          </div>
-          {(() => {
-            const usados = mapa_items_instalacion.filter(m => m.contrato_id === contratoSel.id).map(m => m.elemento_id)
-            const repes = [...new Set(usados.filter((e, i) => usados.indexOf(e) !== i))]
-            if (!repes.length) return null
-            return (
-              <div style={{ ...card, borderLeft: `4px solid ${C.rd}`, padding: '12px 16px', marginBottom: 14, fontSize: 13 }}>
-                ⚠️ Estos elementos están en más de un ítem, y eso hace que el avance se cuente doble:
-                <strong> {repes.map(nombreEl).join(', ')}</strong>. Dejalos en un solo ítem.
-              </div>
-            )
-          })()}
-          <div style={{ display: 'grid', gap: 8 }}>
-            {its.map(it => {
-              const eids = elsDeItem(it.id)
-              return (
-                <div key={it.id} style={{ ...card, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>
-                      <span style={{ color: '#1D4ED8' }}>{it.ref}</span> · {it.descripcion}
-                    </div>
-                    <div style={{ fontSize: 12, color: eids.length ? C.g5 : C.or, marginTop: 3 }}>
-                      {eids.length ? eids.map(nombreEl).join('  +  ') : 'Sin equivalencias definidas'}
-                    </div>
-                  </div>
-                  {editable && <Btn size="sm" onClick={() => abrirMapa(it)}>{eids.length ? 'Cambiar' : 'Definir'}</Btn>}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Modal equivalencias */}
-      {mapaItem && (
-        <Modal title={`Elementos de: ${mapaItem.descripcion}`} onClose={() => setMapaItem(null)} wide>
-          <p style={{ fontSize: 13, color: C.g5, marginBottom: 12 }}>
-            Marcá los elementos de Gestión de Obras que forman este ítem.
-          </p>
-          <div style={{ maxHeight: 360, overflow: 'auto', display: 'grid', gap: 4 }}>
-            {elementos.length === 0 && <div style={{ fontSize: 13, color: C.g5 }}>No hay elementos cargados.</div>}
-            {elementos.map(el => {
-              const marcado = selEls.includes(el.id)
-              const dueno   = itemQueUsa(el.id, mapaItem.id)
-              const bloqueado = !!dueno && !marcado
-              return (
-                <label key={el.id} title={bloqueado ? `Ya está en ${dueno.ref}` : ''}
-                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px', borderRadius: 8, cursor: bloqueado ? 'not-allowed' : 'pointer', fontSize: 13, opacity: bloqueado ? .55 : 1, background: marcado ? '#EFF6FF' : C.g0, border: `1px solid ${marcado ? '#BFDBFE' : C.g1}` }}>
-                  <input type="checkbox" checked={marcado} disabled={bloqueado}
-                    onChange={e => setSelEls(s => e.target.checked ? [...s, el.id] : s.filter(x => x !== el.id))} />
-                  <span style={{ fontWeight: marcado ? 600 : 400 }}>{el.nombre}</span>
-                  {dueno && <span style={{ marginLeft: 'auto', fontSize: 11, color: C.or }}>
-                    {marcado ? '' : `ya está en ${dueno.ref}`}
-                  </span>}
-                </label>
-              )
-            })}
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
-            <Btn onClick={() => setMapaItem(null)}>Cancelar</Btn>
-            <Btn variant="primary" onClick={guardarMapa} disabled={saving}>{saving ? 'Guardando…' : 'Guardar'}</Btn>
-          </div>
-        </Modal>
-      )}
     </div>
   )
 }
