@@ -71,6 +71,13 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
     return 0
   }
 
+  // Un lote pendiente que ya tiene despachos se considera en proceso
+  const estadoLote = (lote) => {
+    if (lote.estado !== 'pendiente') return lote.estado
+    const its = items_lote.filter(i => i.lote_id === lote.id)
+    return its.some(i => despEnLote(lote, i.item_contrato_id) > 0) ? 'en_proceso' : 'pendiente'
+  }
+
   const pctLote = (loteId) => {
     const lote = lotes_produccion.find(l => l.id === loteId)
     const its = items_lote.filter(i => i.lote_id === loteId)
@@ -305,10 +312,11 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
             <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(lotes.length, 5)}, 1fr)`, gap: 10, marginBottom: 20 }}>
               {lotes.map(lote => {
                 const pct  = pctLote(lote.id)
-                const est  = ESTADOS_LOTE[lote.estado] || ESTADOS_LOTE.pendiente
+                const estL = estadoLote(lote)
+                const est  = ESTADOS_LOTE[estL] || ESTADOS_LOTE.pendiente
                 const nRem = remisiones.filter(r => r.lote_id === lote.id).length
                 return (
-                  <div key={lote.id} style={{ ...card, padding: '12px 14px', borderTop: `3px solid ${lote.estado==='completado'?C.gn:lote.estado==='en_proceso'?C.am:C.g3}` }}>
+                  <div key={lote.id} style={{ ...card, padding: '12px 14px', borderTop: `3px solid ${estL==='completado'?C.gn:estL==='en_proceso'?C.am:C.g3}` }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                       <span style={{ fontWeight: 700, fontSize: 14 }}>{lote.nombre}</span>
                       <Badge color={est.color}>{est.label}</Badge>
@@ -319,11 +327,11 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
                       <span>{nRem} rem.</span>
                     </div>
                     <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
-                      {editable && lote.estado !== 'en_proceso' && lote.estado !== 'completado' &&
+                      {editable && estL !== 'en_proceso' && estL !== 'completado' &&
                         <Btn size="sm" onClick={() => cambiarEstado(lote.id, 'en_proceso')}>▶ Iniciar</Btn>}
                       {editable && lote.estado !== 'completado' && saldosLote(lote).some(x => x.saldo < 0) && siguientesAbiertos(lote).length > 0 &&
                         <Btn size="sm" onClick={() => setModalCierre({ lote, soloAjuste: true })}>↪ Pasar excesos</Btn>}
-                      {editable && lote.estado === 'en_proceso' &&
+                      {editable && estL === 'en_proceso' &&
                         <Btn size="sm" variant="success" onClick={() => pedirCierre(lote)}>✓ Completar</Btn>}
                       {editable && lote.estado === 'completado' &&
                         <Btn size="sm" onClick={() => cambiarEstado(lote.id, 'en_proceso')}>↩ Reabrir</Btn>}
@@ -349,7 +357,7 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
                       <th key={l.id} style={{ padding: '9px 10px', textAlign: 'center', color: 'white', fontSize: 10, fontWeight: 700, minWidth: 90, borderLeft: '1px solid #2D5A8E' }}>
                         {l.nombre}
                         <div style={{ fontSize: 9, color: '#93C5FD', fontWeight: 400 }}>
-                          <Badge color={ESTADOS_LOTE[l.estado]?.color || 'gray'} >{ESTADOS_LOTE[l.estado]?.label}</Badge>
+                          <Badge color={ESTADOS_LOTE[estadoLote(l)]?.color || 'gray'} >{ESTADOS_LOTE[estadoLote(l)]?.label}</Badge>
                         </div>
                       </th>
                     ))}
