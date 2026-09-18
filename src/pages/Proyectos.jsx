@@ -17,11 +17,13 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
     pedidos = [], items_pedido = [], items_despacho = [],
     adicionales = [], remisiones = [], items_remision = [],
     lotes_produccion = [], items_lote = [],
+    obras = [], subitems_instalacion = [], liquidaciones = [],
   } = dbData
 
   const navProy = nav?.proyectoId ? proyectos.find(p => p.id === nav.proyectoId) : null
   const [vista, setVista]         = useState(navProy ? 'dashboard' : 'lista')
   const [proySel, setProySel]     = useState(navProy || null)
+  const [corteDet, setCorteDet]   = useState(null)
   const [modal, setModal]         = useState(false)
   const [form, setForm]           = useState(emptyForm)
   const [editId, setEditId]       = useState(null)
@@ -33,6 +35,48 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
   const verFinanzas = ROL_FINANCIERO.includes(user?.rol)
   const verFact     = puedeIr ? puedeIr('facturacion') : false
   const verContr    = puedeIr ? puedeIr('contratos') : false
+
+  // ── Instalación: costo y margen (solo para quien ve facturación) ──
+  const esDetallado = r => String(r.actividad || '') === 'Detallado' || String(r.el || '').startsWith('[Detallado]')
+  const esAdicional = r => String(r.el || '').startsWith('[Adicional]')
+
+  function costoInstalacion(proy) {
+    const obra = obras.find(o => o.id === proy?.obra_id)
+    if (!obra) return null
+    const cts = contratos.filter(c => c.proyecto_id === proy.id && ['instalacion', 'todo_costo'].includes(c.tipo))
+    const its = items_contrato.filter(i => cts.some(c => c.id === i.contrato_id))
+    const elsDeItem = itemId => subitems_instalacion.filter(p => p.item_contrato_id === itemId && p.elemento_id).map(p => p.elemento_id)
+    const aptos = (obra.pisos || []).flatMap(p => p.aptos || [])
+    const instaladoItem = itemId => {
+      const eids = elsDeItem(itemId)
+      if (!eids.length) return 0
+      return aptos.reduce((s2, a) => {
+        const todos = [...(a.elementos || []), ...(a.elementosExtra || [])]
+        let min = Infinity
+        for (const eid of eids) {
+          min = Math.min(min, todos.filter(e => e.elementoId === eid && e.completado).reduce((x, e) => x + Number(e.cantidad || 1), 0))
+        }
+        return s2 + (min === Infinity ? 0 : min)
+      }, 0)
+    }
+    const valorInstalado = its.reduce((s2, it) => s2 + instaladoItem(it.id) * Number(it.vr_unitario || 0), 0)
+
+    const cortes = {}
+    for (const l of liquidaciones) {
+      const filas = (l.rows || []).filter(r => (r.obra || '') === obra.nombre)
+      if (!filas.length) continue
+      const val = fs => fs.reduce((x, r) => x + Number(r.precio || 0) * Number(r.cant || 1), 0)
+      const c = cortes[l.corte] || (cortes[l.corte] = { corte: l.corte, inst: 0, det: 0, adic: 0, personas: [] })
+      const inst = val(filas.filter(r => !esDetallado(r) && !esAdicional(r)))
+      const det = val(filas.filter(esDetallado))
+      const adic = val(filas.filter(esAdicional))
+      c.inst += inst; c.det += det; c.adic += adic
+      c.personas.push({ nombre: l.inst_nombre, inst, det, adic, ret: Number(l.ret || 0), pas: Number(l.pas || 0), bon: Number(l.bon || 0), total: Number(l.total || 0), soloEstaObra: filas.length === (l.rows || []).length })
+    }
+    const lista = Object.values(cortes).sort((a, b) => String(b.corte).localeCompare(String(a.corte)))
+    const pagado = lista.reduce((s2, c) => s2 + c.inst + c.det + c.adic, 0)
+    return { obra, valorInstalado, pagado, margen: valorInstalado - pagado, cortes: lista }
+  }
 
   // ── Navegación a otros módulos desde el dashboard ─────────
   const puede = key => (puedeIr ? puedeIr(key) : false) && !!irA
@@ -320,6 +364,36 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
                         </div>
                       )
                     })}
+                  </div>
+                </div>
+              )
+            })()}
+
+            {verFact && (() => {
+              const ci = costoInstalacion(proySel)
+              if (!ci || (ci.valorInstalado === 0 && ci.pagado === 0)) return null
+              const pctM = ci.valorInstalado > 0 ? ci.margen / ci.valorInstalado * 100 : 0
+              return (
+                <div>
+                  <h3 style={h3}>🔧 Costo de instalación</h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 10 }}>
+                    <Stat label="Vale lo instalado" value={fmt(ci.valorInstalado)} sub="a precio de contrato" />
+                    <Stat label="Pagado a la gente" value={fmt(ci.pagado)} color={C.am} />
+                    <Stat label="Margen" value={fmt(ci.margen)} color={ci.margen >= 0 ? C.gnD : C.rd} sub={`${Math.round(pctM)}% de lo instalado`} />
+                  </div>
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    {ci.cortes.map(c => (
+                      <div key={c.corte} style={{ ...card, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                        onClick={() => setCorteDet(c)}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600 }}>{c.corte} ›</div>
+                          <div style={{ fontSize: 11, color: C.g5 }}>
+                            {c.personas.length} persona(s) · instalación {fmt(c.inst)}{c.det ? ` · detallado ${fmt(c.det)}` : ''}{c.adic ? ` · adicionales ${fmt(c.adic)}` : ''}
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 14, fontWeight: 700 }}>{fmt(c.inst + c.det + c.adic)}</div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )
