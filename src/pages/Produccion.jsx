@@ -51,11 +51,32 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
   const totalLote = (loteId) =>
     items_lote.filter(i => i.lote_id === loteId).reduce((s, i) => s + Number(i.cantidad || 0), 0)
 
+  // Lo despachado se reparte en cascada entre los lotes, en orden:
+  // primero se llena el Lote 1, lo que sobre cuenta para el Lote 2, y así.
+  // Así el avance no depende de a qué lote se le cargó la remisión.
+  const despEnLote = (lote, itemContratoId) => {
+    const lotes = lotesContrato(lote.contrato_id)
+    const total = cantDespTotal(itemContratoId)
+    let restante = total
+    for (const l of lotes) {
+      const plan = Number(items_lote.find(i => i.lote_id === l.id && i.item_contrato_id === itemContratoId)?.cantidad || 0)
+      const usa = Math.min(plan, Math.max(0, restante))
+      if (l.id === lote.id) {
+        // al último lote se le carga también lo que se haya despachado de más
+        const esUltimo = lotes[lotes.length - 1].id === l.id
+        return esUltimo ? Math.max(usa, restante) : usa
+      }
+      restante -= usa
+    }
+    return 0
+  }
+
   const pctLote = (loteId) => {
+    const lote = lotes_produccion.find(l => l.id === loteId)
     const its = items_lote.filter(i => i.lote_id === loteId)
     const plan = its.reduce((s, i) => s + Number(i.cantidad || 0), 0)
-    const desp = its.reduce((s, i) => s + cantDespLote(loteId, i.item_contrato_id), 0)
-    return plan > 0 ? (desp / plan) * 100 : 0
+    const desp = its.reduce((s, i) => s + (lote ? despEnLote(lote, i.item_contrato_id) : 0), 0)
+    return plan > 0 ? (Math.min(desp, plan) / plan) * 100 : 0
   }
 
   // Proyectos con contratos de suministro o todo_costo
@@ -176,7 +197,7 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
   function saldosLote(lote) {
     return itemsLote(lote.id).map(il => {
       const plan = Number(il.cantidad || 0)
-      const desp = cantDespLote(lote.id, il.item_contrato_id)
+      const desp = despEnLote(lote, il.item_contrato_id)
       return { il, plan, desp, saldo: plan - desp, it: items_contrato.find(x => x.id === il.item_contrato_id) }
     }).filter(x => x.saldo !== 0)
   }
@@ -357,7 +378,7 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
                         {lotes.map(l => {
                           const il     = items_lote.find(i => i.lote_id === l.id && i.item_contrato_id === it.id)
                           const cant   = Number(il?.cantidad || 0)
-                          const desp   = il ? cantDespLote(l.id, it.id) : 0
+                          const desp   = il ? despEnLote(l, it.id) : 0
                           const key    = il?.id || `${l.id}_${it.id}`
                           const editVal = editando[key]
                           const lleno   = cant > 0 && desp >= cant
