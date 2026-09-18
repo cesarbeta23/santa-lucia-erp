@@ -39,7 +39,7 @@ Del documento adjunto extrae TODOS los ítems del cuadro de cantidades de obra.
 REGLAS CRÍTICAS:
 - Extrae CADA fila del cuadro de cantidades como un ítem separado
 - ref: código corto descriptivo (ej: P-01, CLOSET-01, ZOC, VEST-01, MUCAMAS-P2)
-- descripcion: descripción completa del ítem tal como aparece
+- descripcion: descripción resumida del ítem, MÁXIMO 100 caracteres (quita repeticiones y detalles de referencia)
 - unidad: unidad de medida exacta (un, ml, m2, gl, apto, etc.)
 - cantidad: número exacto de la columna CANTIDAD
 - vr_unitario: valor UNITARIO tal como aparece en el contrato (no el total)
@@ -66,8 +66,12 @@ Responde SOLO con JSON válido sin texto adicional:
     { type: 'text', text: prompt }
   ]
 
-  const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 4000, messages: [{ role: 'user', content }] })
+  const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 16000, messages: [{ role: 'user', content }] })
+  if (data.error) throw new Error(data.error.message || JSON.stringify(data.error))
   if (!data.content?.[0]?.text) throw new Error('Sin respuesta de la IA')
+  if (data.stop_reason === 'max_tokens') {
+    throw new Error('El cuadro es muy largo y la respuesta quedó cortada. Pegá el cuadro desde Excel o subí el PDF por partes.')
+  }
 
   const raw = data.content[0].text.trim()
   const inicio = raw.indexOf('{')
@@ -76,7 +80,17 @@ Responde SOLO con JSON válido sin texto adicional:
     if (raw[i] === '{') nivel++
     else if (raw[i] === '}') { nivel--; if (nivel === 0) { fin = i + 1; break } }
   }
-  return JSON.parse(raw.slice(inicio, fin))
+  try {
+    return JSON.parse(raw.slice(inicio, fin))
+  } catch {
+    // Si el JSON quedó incompleto, se rescatan los ítems que sí alcanzaron a llegar
+    const items = []
+    const re = /\{[^{}]*"ref"[^{}]*\}/g
+    let m
+    while ((m = re.exec(raw)) !== null) { try { items.push(JSON.parse(m[0])) } catch {} }
+    if (!items.length) throw new Error('La IA respondió en un formato que no se pudo leer')
+    return { items, parcial: true }
+  }
 }
 
 export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
@@ -102,6 +116,7 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
   const [extractInfo, setExtractInfo] = useState(null)
   const [savingItems, setSavingItems] = useState(false)
   const [editItems, setEditItems]     = useState(false)
+  const [pegado, setPegado]           = useState('')
   const fileRef = useRef()
 
   // ── Helpers ───────────────────────────────────────────────
@@ -185,7 +200,7 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
   // ── Extracción IA ─────────────────────────────────────────
   function abrirModalItems(contrato) {
     setContratoSel(contrato)
-    setArchivo(null); setParsedItems([]); setExtractInfo(null); setEditItems(false)
+    setArchivo(null); setParsedItems([]); setExtractInfo(null); setEditItems(false); setPegado('')
     setModalItems(true)
   }
 
@@ -237,6 +252,36 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
       setModalItems(false)
     } catch (e) { toast('Error guardando: ' + e.message, 'err') }
     setSavingItems(false)
+  }
+
+  // ── Pegar el cuadro desde Excel ───────────────────────────
+  // Se espera una fila por ítem con: REF, DESCRIPCIÓN, UM, CANTIDAD, VR. UNITARIO
+  // (separadas por tabulación, que es como pega Excel). Ignora encabezados y filas sin cantidad.
+  function parsearPegado(texto) {
+    const num = v => {
+      const limpio = String(v || '').replace(/[$\s]/g, '').replace(/\.(?=\d{3}\b)/g, '').replace(',', '.')
+      const n = Number(limpio)
+      return isNaN(n) ? 0 : n
+    }
+    return texto.split('\n').map(l => l.split('\t')).filter(c => c.length >= 4)
+      .map((c, i) => ({
+        ref: (c[0] || '').trim(),
+        descripcion: (c[1] || '').trim(),
+        unidad: (c[2] || 'und').trim() || 'und',
+        cantidad: num(c[3]),
+        vr_unitario: num(c[4]),
+        orden: i + 1,
+      }))
+      .filter(it => it.ref && it.cantidad > 0)
+      .map((it, i) => ({ ...it, orden: i + 1 }))
+  }
+
+  function aplicarPegado() {
+    const items = parsearPegado(pegado)
+    if (!items.length) { toast('No se reconoció ninguna fila. Revisa que copiaste las 5 columnas.', 'err'); return }
+    setParsedItems(items)
+    setExtractInfo({ manual: true })
+    toast(`${items.length} ítems leídos`, 'ok')
   }
 
   function updateItem(idx, field, val) {
@@ -405,6 +450,19 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
                 </div>
               )}
             </div>
+
+            {/* Pegar desde Excel */}
+            {!extrayendo && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>…o pegá el cuadro desde Excel</span>
+                  <Btn size="sm" onClick={aplicarPegado} disabled={!pegado.trim()}>Leer lo pegado</Btn>
+                </div>
+                <textarea value={pegado} onChange={e => setPegado(e.target.value)} rows={4}
+                  placeholder={'Copiá en Excel las columnas REF, DESCRIPCIÓN, UM, CANTIDAD y VR. UNITARIO (en ese orden) y pegalas acá.\nEj:  P1\tPuerta baño\tund\t430\t607590'}
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', border: `1px solid ${C.g2}`, borderRadius: 8, fontSize: 12, fontFamily: 'ui-monospace, monospace', resize: 'vertical' }} />
+              </div>
+            )}
 
             {/* Info extraída */}
             {extractInfo && !extrayendo && (
