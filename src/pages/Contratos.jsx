@@ -1,4 +1,4 @@
-import { callClaude } from '../lib/api.js'
+import { callClaudeStream } from '../lib/api.js'
 import { useState, useRef } from 'react'
 import { C, Btn, Inp, Sel, Txt, Modal, Badge, Empty, SectionHeader, card, fmt, fmtDate, Progress } from '../components/UI.jsx'
 import { supabase } from '../lib/supabase.js'
@@ -22,7 +22,7 @@ const ESTADOS_C = {
 }
 
 // ── Extractor de ítems con IA ──────────────────────────────
-async function extraerItemsConIA(archivo, tipoContrato) {
+async function extraerItemsConIA(archivo, tipoContrato, onAvance) {
   const base64 = await new Promise((res, rej) => {
     const reader = new FileReader()
     reader.onload = () => res(reader.result.split(',')[1])
@@ -66,14 +66,16 @@ Responde SOLO con JSON válido sin texto adicional:
     { type: 'text', text: prompt }
   ]
 
-  const data = await callClaude({ model: 'claude-sonnet-4-6', max_tokens: 16000, messages: [{ role: 'user', content }] })
-  if (data.error) throw new Error(data.error.message || JSON.stringify(data.error))
-  if (!data.content?.[0]?.text) throw new Error('Sin respuesta de la IA')
-  if (data.stop_reason === 'max_tokens') {
-    throw new Error('El cuadro es muy largo y la respuesta quedó cortada. Pegá el cuadro desde Excel o subí el PDF por partes.')
+  const { texto, motivo } = await callClaudeStream(
+    { model: 'claude-sonnet-4-6', max_tokens: 16000, messages: [{ role: 'user', content }] },
+    onAvance,
+  )
+  if (!texto) throw new Error('Sin respuesta de la IA')
+  if (motivo === 'max_tokens') {
+    throw new Error('El cuadro es muy largo y la respuesta quedó cortada. Pegá el cuadro desde Excel.')
   }
 
-  const raw = data.content[0].text.trim()
+  const raw = texto.trim()
   const inicio = raw.indexOf('{')
   let nivel = 0, fin = inicio
   for (let i = inicio; i < raw.length; i++) {
@@ -117,6 +119,7 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
   const [savingItems, setSavingItems] = useState(false)
   const [editItems, setEditItems]     = useState(false)
   const [pegado, setPegado]           = useState('')
+  const [avanceIA, setAvanceIA]       = useState(0)
   const fileRef = useRef()
 
   // ── Helpers ───────────────────────────────────────────────
@@ -208,11 +211,14 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
     const f = e.target.files[0]
     if (!f) return
     setArchivo(f)
-    setParsedItems([]); setExtractInfo(null)
+    setParsedItems([]); setExtractInfo(null); setAvanceIA(0)
     setExtrayendo(true)
     try {
       toast('Analizando contrato con IA…', 'info')
-      const resultado = await extraerItemsConIA(f, contratoSel?.tipo)
+      const resultado = await extraerItemsConIA(f, contratoSel?.tipo, txt => {
+        const n = (txt.match(/"ref"/g) || []).length
+        if (n) setAvanceIA(n)
+      })
       const items = (resultado.items || []).map((it, i) => ({ ...it, orden: i + 1 }))
       setParsedItems(items)
       setExtractInfo(resultado)
@@ -434,7 +440,9 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
                   <div style={{ width: 36, height: 36, border: `3px solid ${C.g2}`, borderTopColor: C.or, borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
                   <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
                   <div style={{ fontWeight: 600, color: C.or }}>Analizando contrato con IA…</div>
-                  <div style={{ fontSize: 12, color: C.g5, marginTop: 4 }}>Extrayendo todos los ítems del cuadro de cantidades</div>
+                  <div style={{ fontSize: 12, color: C.g5, marginTop: 4 }}>
+                    {avanceIA ? `${avanceIA} ítems leídos…` : 'Extrayendo todos los ítems del cuadro de cantidades'}
+                  </div>
                 </div>
               ) : archivo ? (
                 <div>
