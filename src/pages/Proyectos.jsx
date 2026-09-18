@@ -24,6 +24,9 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
   const [vista, setVista]         = useState(navProy ? 'dashboard' : 'lista')
   const [proySel, setProySel]     = useState(navProy || null)
   const [corteDet, setCorteDet]   = useState(null)
+  const [modalObra, setModalObra] = useState(false)
+  const [obraForm, setObraForm]   = useState('')
+  const [savingObra, setSavingObra] = useState(false)
   const [modal, setModal]         = useState(false)
   const [form, setForm]           = useState(emptyForm)
   const [editId, setEditId]       = useState(null)
@@ -35,6 +38,38 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
   const verFinanzas = ROL_FINANCIERO.includes(user?.rol)
   const verFact     = puedeIr ? puedeIr('facturacion') : false
   const verContr    = puedeIr ? puedeIr('contratos') : false
+
+  // ── Obra de Gestión de Obras vinculada al proyecto ────────
+  async function guardarObraVinculada(obraId) {
+    setSavingObra(true)
+    try {
+      const { data, error } = await supabase.from('proyectos')
+        .update({ obra_id: obraId || null }).eq('id', proySel.id).select().single()
+      if (error) throw error
+      setDbData(d => ({ ...d, proyectos: d.proyectos.map(p => p.id === data.id ? data : p) }))
+      setProySel(data)
+      toast(obraId ? 'Obra vinculada' : 'Vínculo quitado', 'ok')
+      setModalObra(false)
+    } catch (e) { toast('Error: ' + e.message, 'err') }
+    setSavingObra(false)
+  }
+
+  async function crearObraEnGestion() {
+    setSavingObra(true)
+    try {
+      const nueva = {
+        id: `o${Date.now()}`, nombre: (proySel?.nombre || '').trim(), direccion: '',
+        estado: 'activa', pisos: [], tipologias: [],
+        instaladores_autorizados: [], aptos_habilitados: {}, solicitudes: [], precios_override: {},
+        coordinador_id: '',
+      }
+      const { data: obraCreada, error } = await supabase.from('obras').insert(nueva).select().single()
+      if (error) throw error
+      setDbData(d => ({ ...d, obras: [...(d.obras || []), obraCreada] }))
+      await guardarObraVinculada(obraCreada.id)
+      toast('Obra creada en Gestión de Obras', 'ok')
+    } catch (e) { toast('Error: ' + e.message, 'err'); setSavingObra(false) }
+  }
 
   // ── Instalación: costo y margen (solo para quien ve facturación) ──
   const esDetallado = r => String(r.actividad || '') === 'Detallado' || String(r.el || '').startsWith('[Detallado]')
@@ -181,6 +216,24 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
               <Btn variant="danger" onClick={() => setDelId(proySel.id)}>Eliminar</Btn>
             </div>
           </div>
+
+          {(() => {
+            const obraVinc = obras.find(o => o.id === proySel?.obra_id)
+            return (
+              <div style={{ ...card, padding: '10px 14px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div>
+                  <span style={{ fontSize: 11, color: C.g5, textTransform: 'uppercase', letterSpacing: '.06em' }}>Obra en Gestión de Obras</span>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>
+                    {obraVinc ? `🏗️ ${obraVinc.nombre}` : 'Sin vincular'}
+                  </div>
+                  {!obraVinc && <div style={{ fontSize: 12, color: C.g5 }}>Sin vincular no se puede leer el avance de instalación ni el costo de la obra.</div>}
+                </div>
+                <Btn onClick={() => { setObraForm(proySel?.obra_id || ''); setModalObra(true) }}>
+                  {obraVinc ? 'Cambiar obra' : 'Vincular obra'}
+                </Btn>
+              </div>
+            )
+          })()}
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
             {puede('contratos')   && <Btn size="sm" onClick={() => ir('contratos', {})}>📄 Contratos</Btn>}
@@ -540,6 +593,30 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
       )}
 
       {/* ── MODALES (siempre disponibles) ── */}
+      {modalObra && (
+        <Modal title="Obra en Gestión de Obras" onClose={() => setModalObra(false)}>
+          <Sel label="Obra" value={obraForm} onChange={e => setObraForm(e.target.value)}>
+            <option value="">— Sin vincular —</option>
+            {obras.map(o => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+          </Sel>
+          <div style={{ borderTop: `1px solid ${C.g2}`, margin: '14px 0 12px', paddingTop: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>¿Todavía no existe allá?</div>
+            <div style={{ fontSize: 12, color: C.g5, marginBottom: 8 }}>
+              Se crea con el nombre del proyecto y queda vinculada. Los pisos, apartamentos y tipologías se arman en Gestión de Obras.
+            </div>
+            <Btn onClick={crearObraEnGestion} disabled={savingObra}>
+              + Crear "{proySel?.nombre}" en Gestión de Obras
+            </Btn>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
+            <Btn onClick={() => setModalObra(false)}>Cancelar</Btn>
+            <Btn variant="primary" onClick={() => guardarObraVinculada(obraForm)} disabled={savingObra}>
+              {savingObra ? 'Guardando…' : 'Guardar'}
+            </Btn>
+          </div>
+        </Modal>
+      )}
+
       {corteDet && (
         <Modal title={`Pagos del corte ${corteDet.corte}`} onClose={() => setCorteDet(null)} wide>
           <div style={{ ...card, padding: 0, overflow: 'auto' }}>
