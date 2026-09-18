@@ -190,7 +190,9 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
     setModalCierre({ lote, soloAjuste: false })
   }
 
-  async function completarLote(lote, pasarSaldo, cerrar = true) {
+  // soloExcesos: solo ajusta lo que se despachó de más; lo que falta se deja
+  // en su lote para seguir despachando.
+  async function completarLote(lote, pasarSaldo, cerrar = true, soloExcesos = false) {
     setSaving(true)
     try {
       if (pasarSaldo) {
@@ -202,7 +204,7 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
           if (!il) return { il: null, cant: 0 }
           return { il, cant: cambios[il.id] ?? Number(il.cantidad || 0) }
         }
-        for (const s of saldosLote(lote)) {
+        for (const s of saldosLote(lote).filter(x => !soloExcesos || x.saldo < 0)) {
           cambios[s.il.id] = s.desp
           const itemId = s.il.item_contrato_id
           if (s.saldo > 0) {
@@ -298,8 +300,8 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
                     <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
                       {editable && lote.estado !== 'en_proceso' && lote.estado !== 'completado' &&
                         <Btn size="sm" onClick={() => cambiarEstado(lote.id, 'en_proceso')}>▶ Iniciar</Btn>}
-                      {editable && lote.estado !== 'completado' && saldosLote(lote).length > 0 && siguientesAbiertos(lote).length > 0 &&
-                        <Btn size="sm" onClick={() => setModalCierre({ lote, soloAjuste: true })}>↪ Pasar saldo</Btn>}
+                      {editable && lote.estado !== 'completado' && saldosLote(lote).some(x => x.saldo < 0) && siguientesAbiertos(lote).length > 0 &&
+                        <Btn size="sm" onClick={() => setModalCierre({ lote, soloAjuste: true })}>↪ Pasar excesos</Btn>}
                       {editable && lote.estado === 'en_proceso' &&
                         <Btn size="sm" variant="success" onClick={() => pedirCierre(lote)}>✓ Completar</Btn>}
                       {editable && lote.estado === 'completado' &&
@@ -449,7 +451,7 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
             <Modal title={soloAjuste ? `Pasar saldo de ${loteM.nombre}` : `Completar ${loteM.nombre}`} onClose={() => setModalCierre(null)} wide>
               <p style={{ fontSize: 13, color: C.g5, marginBottom: 12 }}>
                 {soloAjuste
-                  ? 'El lote queda con lo que realmente se despachó y la diferencia se ajusta en los lotes siguientes. El lote no se cierra.'
+                  ? 'Se pasan solo los excesos: el ítem queda con lo que realmente se despachó y esa cantidad de más se descuenta de los lotes siguientes. Lo que falta se queda en este lote y se sigue despachando.'
                   : 'Este lote no cuadra exacto con lo despachado. Revisa las diferencias:'}
               </p>
               <div style={{ ...card, padding: 0, overflow: 'auto', marginBottom: 16 }}>
@@ -464,7 +466,7 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
                     </tr>
                   </thead>
                   <tbody>
-                    {saldos.map(s => (
+                    {(soloAjuste ? saldos.filter(x => x.saldo < 0) : saldos).map(s => (
                       <tr key={s.il.id} style={{ borderTop: `1px solid ${C.g1}` }}>
                         <td style={{ padding: '6px 10px', fontWeight: 700, color: '#1D4ED8' }}>{s.it?.ref}</td>
                         <td style={{ padding: '6px 10px' }}>{s.it?.descripcion}</td>
@@ -480,7 +482,9 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
               </div>
               {sigs.length > 0 ? (
                 <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#1E3A5F', marginBottom: 16 }}>
-                  Si pasas el saldo: este lote queda con lo que realmente se despachó, lo que faltó se suma a <strong>{sigs[0].nombre}</strong> y los excesos se descuentan de los lotes siguientes.
+                  {soloAjuste
+                    ? <>Los excesos se descuentan de <strong>{sigs[0].nombre}</strong> y, si no alcanza, de los lotes que siguen.</>
+                    : <>Si pasas el saldo: este lote queda con lo que realmente se despachó, lo que faltó se suma a <strong>{sigs[0].nombre}</strong> y los excesos se descuentan de los lotes siguientes.</>}
                 </div>
               ) : (
                 <div style={{ background: C.rdL, border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: C.rd, marginBottom: 16 }}>
@@ -491,8 +495,8 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
                 <Btn onClick={() => setModalCierre(null)}>Cancelar</Btn>
                 {!soloAjuste && <Btn onClick={() => completarLote(loteM, false)} disabled={saving}>Solo completar</Btn>}
                 {sigs.length > 0 && (
-                  <Btn variant="primary" onClick={() => completarLote(loteM, true, !soloAjuste)} disabled={saving}>
-                    {saving ? 'Guardando…' : soloAjuste ? `Pasar saldo a ${sigs[0].nombre}` : `Completar y pasar saldo a ${sigs[0].nombre}`}
+                  <Btn variant="primary" onClick={() => completarLote(loteM, true, !soloAjuste, soloAjuste)} disabled={saving}>
+                    {saving ? 'Guardando…' : soloAjuste ? `Pasar excesos a ${sigs[0].nombre}` : `Completar y pasar saldo a ${sigs[0].nombre}`}
                   </Btn>
                 )}
               </div>
