@@ -134,6 +134,24 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
     .filter(el => el.activo !== false && (!el.obra_id || el.obra_id === proySel?.obra_id))
     .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
 
+  // Copia el desglose de otro ítem, cambiando el prefijo del nombre.
+  // Ej: "P-01 ala y marco" al copiarlo a P-02 queda "P-02 ala y marco".
+  function copiarDesglose(itemOrigenId) {
+    const origen = its.find(i => i.id === itemOrigenId)
+    const ps = partesDe(itemOrigenId)
+    if (!ps.length) return
+    const refO = (origen?.ref || '').trim()
+    const refD = (partesItem?.ref || '').trim()
+    setPartesTmp(ps.map(p => ({
+      nombre: refO && p.nombre.includes(refO) ? p.nombre.split(refO).join(refD) : `${refD} ${p.nombre}`.trim(),
+      unidad: p.unidad || 'und',
+      valor_instalador: p.valor_instalador || 0,
+      valor_detallado: p.valor_detallado || 0,
+      elemento_id: null,          // se crean nuevos elementos para este ítem
+    })))
+    toast(`Copiado el desglose de ${refO}`, 'ok')
+  }
+
   async function guardarPartes() {
     setSaving(true)
     try {
@@ -529,6 +547,23 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
       {/* Modal partes */}
       {partesItem && (
         <Modal title={`Partes de: ${partesItem.descripcion}`} onClose={() => setPartesItem(null)} wide>
+          {(() => {
+            const conPartes = its.filter(i => i.id !== partesItem.id && partesDe(i.id).length > 0)
+            if (!conPartes.length) return null
+            return (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '10px 12px', background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#1E3A5F' }}>⧉ Igual que:</span>
+                <select defaultValue="" onChange={e => { if (e.target.value) { copiarDesglose(e.target.value); e.target.value = '' } }}
+                  style={{ padding: '6px 10px', border: `1px solid ${C.g2}`, borderRadius: 8, fontSize: 13, flex: 1, minWidth: 200 }}>
+                  <option value="">— Copiar el desglose de otro ítem —</option>
+                  {conPartes.map(i => (
+                    <option key={i.id} value={i.id}>{i.ref} · {partesDe(i.id).length} partes</option>
+                  ))}
+                </select>
+              </div>
+            )
+          })()}
+
           <p style={{ fontSize: 13, color: C.g5, marginBottom: 12 }}>
             Los valores son lo que se le paga a la gente por cada parte.
             Si la obra ya está montada, enlazá cada parte con el elemento que ya existe en Gestión de Obras;
