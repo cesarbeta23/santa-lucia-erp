@@ -392,7 +392,7 @@ export default function App() {
         'cotizaciones', 'adicionales', 'pedidos', 'items_pedido', 'proveedores', 'ingresos_material',
         'remisiones', 'items_remision', 'items_control_despacho', 'lotes_produccion', 'items_lote', 'actas_facturacion',
         'items_acta_facturacion', 'actas_instalacion', 'items_acta_instalacion',
-        'subitems_instalacion', 'mapa_items_instalacion',
+        'subitems_instalacion', 'mapa_items_instalacion', 'entregas_instalacion', 'cantidades_torre',
         // de Gestión de Obras (solo lectura, para el avance de instalación):
         'obras', 'elementos', 'liquidaciones', 'usuarios',
       ]

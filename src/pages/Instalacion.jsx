@@ -8,7 +8,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
   const {
     proyectos = [], contratos = [], items_contrato = [], constructoras = [],
     actas_facturacion = [], items_acta_facturacion = [],
-    obras = [], elementos = [], subitems_instalacion = [], entregas_instalacion = [],
+    obras = [], elementos = [], subitems_instalacion = [], entregas_instalacion = [], cantidades_torre = [],
   } = dbData
   const editable = puedeEditar ? puedeEditar('instalacion') : true
 
@@ -24,11 +24,25 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
   const [partesItem, setPartesItem] = useState(null)     // ítem al que se le están armando las partes
   const [partesTmp, setPartesTmp]   = useState([])
   const [saving, setSaving]       = useState(false)
+  const [torreSel, setTorreSel]   = useState('')        // '' = todas las torres
+  const [modalReparto, setModalReparto] = useState(false)
+  const [repartoTmp, setRepartoTmp]     = useState({})   // { `${itemId}|${obraId}`: cantidad }
 
   // ── Helpers ───────────────────────────────────────────────
   const contratosInst = contratos.filter(c => TIPOS_INST.includes(c.tipo))
   const itemsDe   = cid => items_contrato.filter(i => i.contrato_id === cid).sort((a, b) => (a.orden || 0) - (b.orden || 0))
-  const obraDe    = proy => obras.find(o => o.id === proy?.obra_id) || null
+  // Un proyecto puede tener varias torres (cada una es una obra en Gestión de Obras)
+  const torresDe  = proy => [...new Set([...(proy?.obras_ids || []), proy?.obra_id].filter(Boolean))]
+    .map(id => obras.find(o => o.id === id)).filter(Boolean)
+  // Junta las torres en una sola "obra" para sumar; cada piso recuerda de qué torre es
+  const unirTorres = torres => torres.length ? {
+    id: torres[0].id, nombre: torres.map(t => t.nombre).join(' + '),
+    pisos: torres.flatMap(t => (t.pisos || []).map(p => ({ ...p, _torreId: t.id, _torreNombre: t.nombre }))),
+  } : null
+  const obraDe    = (proy, torreId = '') => {
+    const ts = torresDe(proy)
+    return unirTorres(torreId ? ts.filter(t => t.id === torreId) : ts)
+  }
   const partesDe  = itemId => subitems_instalacion.filter(p => p.item_contrato_id === itemId).sort((a, b) => (a.orden || 0) - (b.orden || 0))
   const elsDeItem = itemId => [...new Set(partesDe(itemId).filter(p => p.elemento_id).map(p => p.elemento_id))]
   const nombreEl  = eid => elementos.find(e => e.id === eid)?.nombre || eid
@@ -38,8 +52,14 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
 
   // Todos los apartamentos de la obra vinculada
   const aptosDe = obra => (obra?.pisos || []).flatMap(p =>
-    (p.aptos || []).map(a => ({ ...a, pisoNombre: p.numero ?? p.nombre }))
+    (p.aptos || []).map(a => ({ ...a, pisoNombre: p.numero ?? p.nombre, torreId: p._torreId, torreNombre: p._torreNombre }))
   )
+
+  // Cuánto del contrato le toca a una torre (si se repartió)
+  const asignadoTorre = (itemId, obraId) => {
+    const r = cantidades_torre.find(c => c.item_contrato_id === itemId && c.obra_id === obraId)
+    return r ? Number(r.cantidad || 0) : null
+  }
 
   // Cantidad instalada de un ítem en un apto: se cuenta solo cuando TODAS
   // sus partes están chuleadas (la constructora paga la unidad terminada).
@@ -103,7 +123,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
     const prev = entregaDe(it.id, apto.id)
     const fila = {
       contrato_id: contratoSel.id, item_contrato_id: it.id,
-      obra_id: proySel?.obra_id || null, apto_id: apto.id, apto_nombre: String(apto.nombre || apto.numero || ''),
+      obra_id: apto.torreId || proySel?.obra_id || null, apto_id: apto.id, apto_nombre: String(apto.nombre || apto.numero || ''),
       entregado: prev?.entregado || false, memorando: prev?.memorando || null,
       fecha_entrega: prev?.fecha_entrega || null,
       ...cambios,
@@ -185,7 +205,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
 
   // Elementos que se pueden enlazar: los de esta obra y los generales de siempre
   const elsObra = elementos
-    .filter(el => el.activo !== false && (!el.obra_id || el.obra_id === proySel?.obra_id))
+    .filter(el => el.activo !== false && (!el.obra_id || torresDe(proySel).some(t => t.id === el.obra_id)))
     .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
 
   // Copia el desglose de otro ítem, cambiando el prefijo del nombre.
@@ -250,7 +270,8 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
           precio: Number(p.valor_instalador) || 0,
           precio_detallado: Number(p.valor_detallado) || 0,
           grupo: it.ref || 'Contrato', activo: true,
-          obra_id: proySel.obra_id, item_contrato_id: it.id,
+          obra_id: torresDe(proySel)[0]?.id || proySel.obra_id, item_contrato_id: it.id,
+          obras_extra: torresDe(proySel).slice(1).map(t => t.id),
         }
         const { data: elCreado, error: e1 } = await supabase.from('elementos').insert(el).select().single()
         if (e1) throw e1
@@ -329,12 +350,16 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
 
         <div style={{ ...card, padding: '12px 16px', marginBottom: 18, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <div>
-            <div style={{ fontSize: 11, color: C.g5, textTransform: 'uppercase', letterSpacing: '.06em' }}>Obra en Gestión de Obras</div>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>{obra ? obra.nombre : 'Sin vincular'}</div>
+            <div style={{ fontSize: 11, color: C.g5, textTransform: 'uppercase', letterSpacing: '.06em' }}>
+              {torresDe(proySel).length > 1 ? 'Torres en Gestión de Obras' : 'Obra en Gestión de Obras'}
+            </div>
+            <div style={{ fontWeight: 700, fontSize: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {torresDe(proySel).length ? torresDe(proySel).map(t => <span key={t.id}>🏗️ {t.nombre}</span>) : 'Sin vincular'}
+            </div>
             {!obra && <div style={{ fontSize: 12, color: C.g5 }}>Sin vincular no se puede leer el avance de los coordinadores.</div>}
           </div>
-          {editable && <Btn onClick={() => { setObraForm(proySel?.obra_id || ''); setModalObra(true) }}>
-            {obra ? 'Cambiar obra' : 'Vincular obra'}
+          {irA && <Btn onClick={() => irA('proyectos', { proyectoId: proySel.id, desde: 'proyecto' })}>
+            Torres / obras en el proyecto →
           </Btn>}
         </div>
 
@@ -395,9 +420,63 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
   }
 
   // ── Vista contrato ────────────────────────────────────────
-  const its   = itemsDe(contratoSel.id)
-  const obra  = obraDe(proySel)
-  const aptos = aptosDe(obra)
+  const its    = itemsDe(contratoSel.id)
+  const torres = torresDe(proySel)
+  const obra   = obraDe(proySel, torreSel)
+  const aptos  = aptosDe(obra)
+
+  // Contratado según la torre: si se repartió, lo de esa torre; si no, el contrato completo
+  const contratadoDe = it => {
+    if (!torreSel) return Number(it.cantidad || 0)
+    return asignadoTorre(it.id, torreSel)
+  }
+  // Facturado según la torre (actas marcadas con esa torre)
+  const facturadoTorre = itemId => {
+    if (!torreSel) return facturadoItem(itemId)
+    const ids = actas_facturacion.filter(a => a.obra_id === torreSel).map(a => a.id)
+    return items_acta_facturacion.filter(i => i.item_contrato_id === itemId && ids.includes(i.acta_facturacion_id))
+      .reduce((s, i) => s + Number(i.cantidad || 0), 0)
+  }
+
+  // ── Reparto del contrato entre torres ──
+  function abrirReparto() {
+    const tmp = {}
+    for (const it of its) for (const t of torres) {
+      const v = asignadoTorre(it.id, t.id)
+      tmp[`${it.id}|${t.id}`] = v === null ? '' : String(v)
+    }
+    setRepartoTmp(tmp); setModalReparto(true)
+  }
+  function llenarConGestion() {
+    const tmp = { ...repartoTmp }
+    for (const it of its) for (const t of torres) {
+      tmp[`${it.id}|${t.id}`] = String(programadoItem(unirTorres([t]), it.id))
+    }
+    setRepartoTmp(tmp)
+  }
+  async function guardarReparto() {
+    setSaving(true)
+    try {
+      const filas = []
+      for (const it of its) for (const t of torres) {
+        const v = repartoTmp[`${it.id}|${t.id}`]
+        if (v === '' || v === undefined) continue
+        filas.push({ item_contrato_id: it.id, obra_id: t.id, cantidad: Number(v) || 0 })
+      }
+      const itemIds = its.map(i => i.id)
+      await supabase.from('cantidades_torre').delete().in('item_contrato_id', itemIds)
+      let nuevas = []
+      if (filas.length) {
+        const { data, error } = await supabase.from('cantidades_torre').insert(filas).select()
+        if (error) throw error
+        nuevas = data
+      }
+      setDbData(d => ({ ...d, cantidades_torre: [...(d.cantidades_torre || []).filter(c => !itemIds.includes(c.item_contrato_id)), ...nuevas] }))
+      toast('Reparto por torre guardado', 'ok')
+      setModalReparto(false)
+    } catch (e) { toast('Error: ' + e.message, 'err') }
+    setSaving(false)
+  }
 
   const tabBtn = (k, label) => (
     <button onClick={() => setTab(k)} style={{
@@ -421,6 +500,20 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
           </div>
         </div>
       </div>
+
+      {torres.length > 1 && (
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: C.g5 }}>TORRE:</span>
+          {[{ id: '', nombre: 'Todas' }, ...torres].map(t => (
+            <button key={t.id || 'todas'} onClick={() => setTorreSel(t.id)} style={{
+              padding: '6px 12px', borderRadius: 999, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit',
+              border: `1px solid ${torreSel === t.id ? C.or : C.g2}`,
+              background: torreSel === t.id ? C.or : 'white', color: torreSel === t.id ? 'white' : C.g5, fontWeight: 600,
+            }}>{t.nombre}</button>
+          ))}
+          {editable && <Btn size="sm" onClick={abrirReparto}>⚖️ Repartir contrato por torre</Btn>}
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 16, background: C.g1, padding: 4, borderRadius: 10, width: 'fit-content' }}>
         {tabBtn('avance', 'Avance por ítem')}
@@ -447,9 +540,10 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
             </thead>
             <tbody>
               {its.map(it => {
-                const contr = Number(it.cantidad || 0)
+                const contrT = contratadoDe(it)            // null = esta torre no tiene reparto
+                const contr = contrT ?? 0
                 const inst  = obra ? instaladoItem(obra, it.id) : 0
-                const fact  = facturadoItem(it.id)
+                const fact  = facturadoTorre(it.id)
                 const faltaInst = contr - inst
                 const porFact   = inst - fact
                 const sinMapa   = elsDeItem(it.id).length === 0
@@ -463,13 +557,16 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                       {sinMapa && <span style={{ fontSize: 11, color: C.or, marginLeft: 8 }}>⚠️ sin desglosar</span>}
                     </td>
                     <td style={{ padding: '8px 10px', color: C.g5 }}>{it.unidad}</td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>{contr.toLocaleString('es-CO')}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>
+                      {contrT === null ? <span style={{ fontSize: 11, color: C.or }}>sin repartir</span> : contr.toLocaleString('es-CO')}
+                      {torreSel && contrT !== null && <div style={{ fontSize: 10, color: C.g4, fontWeight: 400 }}>de {Number(it.cantidad || 0).toLocaleString('es-CO')}</div>}
+                    </td>
                     <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600,
-                      color: sinMapa || !obra ? C.g3 : difProg === 0 ? C.gnD : C.rd }}
+                      color: sinMapa || !obra || contrT === null ? C.g3 : difProg === 0 ? C.gnD : C.rd }}
                       title={sinMapa ? 'Falta desglosar el ítem' : difProg === 0 ? 'Cuadra con el contrato'
                         : difProg > 0 ? `Los aptos de Gestión llevan ${difProg} más que el contrato` : `A los aptos de Gestión les faltan ${Math.abs(difProg)} frente al contrato`}>
                       {sinMapa || !obra ? '—' : prog.toLocaleString('es-CO')}
-                      {!sinMapa && obra && difProg !== 0 && <div style={{ fontSize: 10, fontWeight: 700 }}>{difProg > 0 ? `+${difProg}` : difProg} vs contrato</div>}
+                      {!sinMapa && obra && contrT !== null && difProg !== 0 && <div style={{ fontSize: 10, fontWeight: 700 }}>{difProg > 0 ? `+${difProg}` : difProg} vs {torreSel ? 'lo de la torre' : 'contrato'}</div>}
                     </td>
                     <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: inst > 0 ? C.gnD : C.g3 }}>{inst.toLocaleString('es-CO')}</td>
                     <td style={{ padding: '8px 10px', textAlign: 'right', color: fact > 0 ? C.bk : C.g3 }}>{fact.toLocaleString('es-CO')}</td>
@@ -489,9 +586,9 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
               <tr style={{ background: '#1E3A5F', fontSize: 12, fontWeight: 700 }}>
                 <td colSpan={3} style={{ padding: '9px 10px', color: 'white' }}>TOTALES</td>
                 {(() => {
-                  const c = its.reduce((s, i) => s + Number(i.cantidad || 0), 0)
+                  const c = its.reduce((s, i) => s + (contratadoDe(i) ?? 0), 0)
                   const i2 = obra ? its.reduce((s, i) => s + instaladoItem(obra, i.id), 0) : 0
-                  const f = its.reduce((s, i) => s + facturadoItem(i.id), 0)
+                  const f = its.reduce((s, i) => s + facturadoTorre(i.id), 0)
                   const cel = (v, col) => <td style={{ padding: '9px 10px', textAlign: 'right', color: col }}>{v.toLocaleString('es-CO')}</td>
                   const p = obra ? its.reduce((s, i) => s + programadoItem(obra, i.id), 0) : 0
                   return <>
@@ -536,6 +633,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                       <td style={{ padding: '7px 10px', fontWeight: 700, whiteSpace: 'nowrap' }}>
                         {a.nombre || a.numero}
                         <span style={{ fontSize: 10, color: C.g5, marginLeft: 6 }}>P{a.pisoNombre}</span>
+                        {torres.length > 1 && !torreSel && <div style={{ fontSize: 9, color: C.or, fontWeight: 600 }}>{a.torreNombre}</div>}
                       </td>
                       {its.map(it => {
                         const { hechas, total } = parcialEnApto(a, it.id)
@@ -585,14 +683,14 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                   <tr style={{ background: '#1E293B', fontWeight: 600 }}>
                     <td style={{ padding: '6px 10px', color: '#CBD5E1', fontSize: 11 }}>CONTRATADO</td>
                     {its.map(it => [
-                      <td key={it.id} style={{ padding: '6px 8px', textAlign: 'center', color: '#CBD5E1' }}>{Number(it.cantidad || 0).toLocaleString('es-CO')}</td>,
+                      <td key={it.id} style={{ padding: '6px 8px', textAlign: 'center', color: '#CBD5E1' }}>{contratadoDe(it) === null ? '—' : contratadoDe(it).toLocaleString('es-CO')}</td>,
                       <td key={it.id + 'e'} />,
                     ])}
                   </tr>
                   <tr style={{ background: '#1E293B', fontWeight: 600 }}>
                     <td style={{ padding: '6px 10px', color: '#CBD5E1', fontSize: 11 }}>FALTA</td>
                     {its.map(it => {
-                      const falta = Number(it.cantidad || 0) - aptos.reduce((s, a) => s + instaladoEnApto(a, it.id), 0)
+                      const falta = (contratadoDe(it) ?? 0) - aptos.reduce((s, a) => s + instaladoEnApto(a, it.id), 0)
                       return [
                         <td key={it.id} style={{ padding: '6px 8px', textAlign: 'center', color: falta > 0 ? '#FDBA74' : '#86EFAC' }}>{falta > 0 ? falta.toLocaleString('es-CO') : '✓'}</td>,
                         <td key={it.id + 'e'} />,
@@ -663,6 +761,58 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
             })}
           </div>
         </div>
+      )}
+
+      {/* Modal reparto por torre */}
+      {modalReparto && (
+        <Modal title="Repartir el contrato por torre" onClose={() => setModalReparto(false)} wide>
+          <p style={{ fontSize: 13, color: C.g5, marginBottom: 10 }}>
+            Cuánto de cada ítem del contrato se ejecuta en cada torre. Con eso el avance, la validación y el
+            "por facturar" de cada torre se comparan contra lo suyo, no contra el contrato completo.
+          </p>
+          <div style={{ marginBottom: 10 }}>
+            <Btn size="sm" onClick={llenarConGestion}>↧ Llenar con lo cargado en Gestión de Obras</Btn>
+          </div>
+          <div style={{ ...card, padding: 0, overflow: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: C.g1 }}>
+                  <th style={{ padding: '7px 10px', textAlign: 'left' }}>ÍTEM</th>
+                  <th style={{ padding: '7px 10px', textAlign: 'right' }}>CONTRATO</th>
+                  {torres.map(t => <th key={t.id} style={{ padding: '7px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>{t.nombre}</th>)}
+                  <th style={{ padding: '7px 10px', textAlign: 'right' }}>SIN REPARTIR</th>
+                </tr>
+              </thead>
+              <tbody>
+                {its.map(it => {
+                  const total = Number(it.cantidad || 0)
+                  const suma = torres.reduce((x, t) => x + (Number(repartoTmp[`${it.id}|${t.id}`]) || 0), 0)
+                  const resto = total - suma
+                  return (
+                    <tr key={it.id} style={{ borderTop: `1px solid ${C.g1}` }}>
+                      <td style={{ padding: '6px 10px' }}><strong style={{ color: '#1D4ED8' }}>{it.ref}</strong> <span style={{ color: C.g5 }}>{String(it.descripcion || '').slice(0, 40)}</span></td>
+                      <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 600 }}>{total.toLocaleString('es-CO')}</td>
+                      {torres.map(t => (
+                        <td key={t.id} style={{ padding: '4px 8px', textAlign: 'right' }}>
+                          <input type="number" min="0" value={repartoTmp[`${it.id}|${t.id}`] ?? ''}
+                            onChange={e => setRepartoTmp(r => ({ ...r, [`${it.id}|${t.id}`]: e.target.value }))}
+                            style={{ width: 80, padding: '4px 6px', border: `1px solid ${C.g2}`, borderRadius: 6, textAlign: 'right', fontSize: 12 }} />
+                        </td>
+                      ))}
+                      <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: resto === 0 ? C.gnD : resto < 0 ? C.rd : C.or }}>
+                        {resto === 0 ? '✓' : resto.toLocaleString('es-CO')}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
+            <Btn onClick={() => setModalReparto(false)}>Cancelar</Btn>
+            <Btn variant="primary" onClick={guardarReparto} disabled={saving}>{saving ? 'Guardando…' : 'Guardar reparto'}</Btn>
+          </div>
+        </Modal>
       )}
 
       {/* Modal partes */}

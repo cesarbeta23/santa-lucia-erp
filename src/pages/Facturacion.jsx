@@ -98,28 +98,44 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
 
   // Instalado a hoy de un ítem de instalación, leído de Gestión de Obras:
   // cuenta una unidad por apto cuando todas sus partes están chuleadas.
-  const instaladoItem = (itemContratoId) => {
+  // Torres (obras de Gestión) de un proyecto
+  const torresDe = proy => [...new Set([...(proy?.obras_ids || []), proy?.obra_id].filter(Boolean))]
+    .map(id => obras.find(o => o.id === id)).filter(Boolean)
+  const nombreTorre = id => obras.find(o => o.id === id)?.nombre || ''
+
+  // torreId vacío = todas las torres del proyecto
+  const instaladoItem = (itemContratoId, torreId = '') => {
     const it = items_contrato.find(i => i.id === itemContratoId)
     const c = contratos.find(x => x.id === it?.contrato_id)
     const proy = proyectos.find(p => p.id === c?.proyecto_id)
-    const obra = obras.find(o => o.id === proy?.obra_id)
-    if (!obra) return 0
+    const torres = torresDe(proy).filter(t => !torreId || t.id === torreId)
+    if (!torres.length) return 0
     const eids = subitems_instalacion.filter(p => p.item_contrato_id === itemContratoId && p.elemento_id).map(p => p.elemento_id)
     if (!eids.length) return 0
-    return (obra.pisos || []).flatMap(p => p.aptos || []).reduce((s, a) => {
+    return torres.flatMap(t => (t.pisos || []).flatMap(p => p.aptos || [])).reduce((s, a) => {
       const todos = [...(a.elementos || []), ...(a.elementosExtra || [])]
+      const presentes = eids.filter(eid => todos.some(e => e.elementoId === eid))
+      if (!presentes.length) return s
       let min = Infinity
-      for (const eid of eids) {
+      for (const eid of presentes) {
         min = Math.min(min, todos.filter(e => e.elementoId === eid && e.completado).reduce((x, e) => x + Number(e.cantidad || 1), 0))
       }
       return s + (min === Infinity ? 0 : min)
     }, 0)
   }
 
+  // Facturado de un ítem: todas las actas, o solo las de una torre
+  const factItem = (itemId, torreId = '') => {
+    const actas = torreId ? actas_facturacion.filter(a => a.obra_id === torreId).map(a => a.id) : null
+    return items_acta_facturacion
+      .filter(r => r.item_contrato_id === itemId && (!actas || actas.includes(r.acta_facturacion_id)))
+      .reduce((s, r) => s + Number(r.cantidad || 0), 0)
+  }
+
   const esInstalacion = c => c?.tipo === 'instalacion'
   const contratoDeItem = itemId => contratos.find(c => c.id === items_contrato.find(i => i.id === itemId)?.contrato_id)
   // Lo que se puede facturar: en suministro lo despachado, en instalación lo instalado
-  const cantBase = itemId => esInstalacion(contratoDeItem(itemId)) ? instaladoItem(itemId) : cantDespachada(itemId)
+  const cantBase = (itemId, torreId = '') => esInstalacion(contratoDeItem(itemId)) ? instaladoItem(itemId, torreId) : cantDespachada(itemId)
   const nombreBase = c => esInstalacion(c) ? 'instalado' : 'despachado'
 
   const calcTotales = (items, contrato) => {
@@ -223,7 +239,7 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
     const excesos = parsedItems.filter(it => {
       const ic = items_contrato.find(i => i.ref === it.ref && i.contrato_id === actaSel.contrato_id)
       if (!ic) return false
-      const despachado = cantBase(ic.id)
+      const despachado = cantBase(ic.id, actaSel?.obra_id || '')
       if (despachado === 0) return false  // si no hay despachos, no validar
       return Number(it.cantidad || 0) > despachado
     })
@@ -258,6 +274,7 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
   // Trae de nuevo lo que cambia seguido (chuleos de obra, remisiones, actas)
   // sin recargar toda la app ni perder la pantalla donde estás.
   const [refrescando, setRefrescando] = useState(false)
+  const [torreFact, setTorreFact] = useState('')
   async function refrescar() {
     setRefrescando(true)
     try {
@@ -276,18 +293,18 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
   }
 
   // ── 2. Crear un acta con todo lo que está pendiente por facturar ──
-  async function crearActaPendiente(contrato) {
+  async function crearActaPendiente(contrato, torreId = '') {
     const its = items_contrato.filter(i => i.contrato_id === contrato.id)
     const pendientes = its.map(it => {
-      const fact = items_acta_facturacion.filter(r => r.item_contrato_id === it.id).reduce((s, r) => s + Number(r.cantidad || 0), 0)
-      return { it, xf: Math.max(0, cantBase(it.id) - fact) }
+      const fact = factItem(it.id, torreId)
+      return { it, xf: Math.max(0, cantBase(it.id, torreId) - fact) }
     })
     if (!pendientes.some(p => p.xf > 0)) { toast('No hay nada pendiente por facturar en este contrato', 'info'); return }
     try {
       const previas = actas_facturacion.filter(a => a.contrato_id === contrato.id)
       const nums = previas.map(a => parseInt(a.numero_acta, 10)).filter(n => !isNaN(n))
       const siguiente = nums.length ? Math.max(...nums) + 1 : previas.length + 1
-      const nueva = { ...emptyActa, contrato_id: contrato.id, numero_acta: String(siguiente), fecha: new Date().toISOString().slice(0, 10) }
+      const nueva = { ...emptyActa, contrato_id: contrato.id, numero_acta: String(siguiente), fecha: new Date().toISOString().slice(0, 10), obra_id: torreId || null }
       const { data: cr, error } = await supabase.from('actas_facturacion').insert(nueva).select().single()
       if (error) throw error
       setDbData(d => ({ ...d, actas_facturacion: [...d.actas_facturacion, cr] }))
@@ -316,7 +333,7 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
     const excesos2 = validos.filter(it => {
       const ic = items_contrato.find(i => i.ref === it.ref && i.contrato_id === actaSel.contrato_id)
       if (!ic) return false
-      const despachado = cantBase(ic.id)
+      const despachado = cantBase(ic.id, actaSel?.obra_id || '')
       if (despachado === 0) return false
       return Number(it.cantidad || 0) > despachado
     })
@@ -505,22 +522,36 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
                 {/* Cuadro despachos vs facturado */}
                 {(() => {
                   const itsContr = items_contrato.filter(i => i.contrato_id === contrato.id)
+                  const torresC = esInstalacion(contrato) ? torresDe(proySel) : []
+                  const tF = torresC.some(t => t.id === torreFact) ? torreFact : ''   // torre elegida (o todas)
                   const pendientes = itsContr.filter(it => {
-                    const desp = cantBase(it.id)
-                    const fact = items_acta_facturacion.filter(r => r.item_contrato_id === it.id).reduce((s,r) => s+Number(r.cantidad||0), 0)
+                    const desp = cantBase(it.id, tF)
+                    const fact = factItem(it.id, tF)
                     return Math.max(0, desp - fact) > 0
                   })
                   if (!itsContr.length) return null
                   const totalXFact = pendientes.reduce((s, it) => {
-                    const desp = cantBase(it.id)
-                    const fact = items_acta_facturacion.filter(r => r.item_contrato_id === it.id).reduce((s2,r) => s2+Number(r.cantidad||0), 0)
+                    const desp = cantBase(it.id, tF)
+                    const fact = factItem(it.id, tF)
                     return s + Math.max(0, desp - fact) * Number(it.vr_unitario||0)
                   }, 0)
                   return (
                     <div style={{ marginBottom: 16 }}>
+                      {torresC.length > 1 && (
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: C.g5 }}>TORRE:</span>
+                          {[{ id: '', nombre: 'Todas' }, ...torresC].map(t => (
+                            <button key={t.id || 'todas'} onClick={() => setTorreFact(t.id)} style={{
+                              padding: '5px 12px', borderRadius: 999, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', fontWeight: 600,
+                              border: `1px solid ${tF === t.id ? C.or : C.g2}`, background: tF === t.id ? C.or : 'white', color: tF === t.id ? 'white' : C.g5,
+                            }}>{t.nombre}</button>
+                          ))}
+                          {!tF && <span style={{ fontSize: 11, color: C.g4 }}>En "Todas" se cuentan también las actas sin torre.</span>}
+                        </div>
+                      )}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                         <span style={{ fontSize: 12, fontWeight: 700, color: C.g5, textTransform: 'uppercase', letterSpacing: '.06em' }}>
-                          Control {esInstalacion(contrato) ? 'instalación' : 'despacho'} vs facturación
+                          Control {esInstalacion(contrato) ? 'instalación' : 'despacho'} vs facturación{tF ? ` · ${nombreTorre(tF)}` : ''}
                         </span>
                         {totalXFact <= 0 && (
                           <Btn size="sm" onClick={refrescar} disabled={refrescando}>{refrescando ? 'Actualizando…' : '🔄 Actualizar'}</Btn>
@@ -533,7 +564,7 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
                             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                             <Btn size="sm" onClick={refrescar} disabled={refrescando}>{refrescando ? 'Actualizando…' : '🔄 Actualizar'}</Btn>
                             {totalXFact > 0 && (
-                              <Btn size="sm" variant="primary" onClick={() => crearActaPendiente(contrato)}>+ Crear acta con lo pendiente</Btn>
+                              <Btn size="sm" variant="primary" onClick={() => crearActaPendiente(contrato, tF)}>+ Crear acta con lo pendiente{tF ? ` (${nombreTorre(tF)})` : ''}</Btn>
                             )}
                             <Btn size="sm" onClick={() => {
                               const constr = constructoras.find(c => c.id === proySel.constructora_id)
@@ -542,8 +573,8 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
                                 contrato: contrato.numero||'—', tipo: contrato.tipo,
                                 fecha: new Date().toLocaleDateString('es-CO'),
                                 items: itsContr.map(it => {
-                                  const desp2 = cantBase(it.id)
-                                  const fact2 = items_acta_facturacion.filter(r => r.item_contrato_id === it.id).reduce((s,r) => s+Number(r.cantidad||0), 0)
+                                  const desp2 = cantBase(it.id, tF)
+                                  const fact2 = factItem(it.id, tF)
                                   const xf2 = Math.max(0, desp2 - fact2)
                                   return { ref: it.ref, descripcion: it.descripcion, unidad: it.unidad, despachado: desp2, facturado: fact2, xFact: xf2, vrUnit: Number(it.vr_unitario||0), totalFact: xf2 * Number(it.vr_unitario||0) }
                                 }).filter(i => i.xFact > 0)
@@ -572,8 +603,8 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
                           <tbody>
                             {itsContr.map(it => {
                               const contratado2 = Number(it.cantidad||0)
-                              const desp3 = cantBase(it.id)
-                              const fact3 = items_acta_facturacion.filter(r => r.item_contrato_id === it.id).reduce((s,r) => s+Number(r.cantidad||0), 0)
+                              const desp3 = cantBase(it.id, tF)
+                              const fact3 = factItem(it.id, tF)
                               const xf3   = Math.max(0, desp3 - fact3)
                               const falt3 = Math.max(0, contratado2 - desp3)
                               return (
@@ -619,6 +650,7 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
                           <div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
                               <span style={{ fontWeight: 700, fontSize: 15 }}>Acta {a.numero_acta || '—'}</span>
+                              {a.obra_id && <span style={{ fontSize: 11, fontWeight: 700, color: C.or, marginLeft: 8 }}>🏗️ {nombreTorre(a.obra_id)}</span>}
                               <Badge color={est.color}>{est.label}</Badge>
                               {nItems > 0 && <span style={{ fontSize: 12, color: C.g5 }}>{nItems} ítems</span>}
                             </div>
@@ -758,6 +790,19 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
                 })}
               </Sel>
             </div>
+            {(() => {
+              const c = contratos.find(x => x.id === form.contrato_id)
+              const ts = esInstalacion(c) ? torresDe(proyectos.find(p => p.id === c?.proyecto_id)) : []
+              if (ts.length < 2) return null
+              return (
+                <div style={{ gridColumn: '1/-1' }}>
+                  <Sel label="Torre" value={form.obra_id || ''} onChange={e => setForm(f => ({ ...f, obra_id: e.target.value || null }))}>
+                    <option value="">— Todo el contrato (sin torre) —</option>
+                    {ts.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+                  </Sel>
+                </div>
+              )
+            })()}
             <Inp label="Número de acta" value={form.numero_acta||''} onChange={e => setForm(f => ({ ...f, numero_acta: e.target.value }))} placeholder="Ej: 7, EA33003561..." />
             <Inp label="Fecha *" type="date" value={form.fecha||''} onChange={e => setForm(f => ({ ...f, fecha: e.target.value }))} />
             <Sel label="Estado" value={form.estado} onChange={e => setForm(f => ({ ...f, estado: e.target.value }))}>

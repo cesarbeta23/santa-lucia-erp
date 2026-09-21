@@ -28,6 +28,8 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
   const [retDet, setRetDet]       = useState(null)     // reporte de retenidos por instalador
   const [modalObra, setModalObra] = useState(false)
   const [obraForm, setObraForm]   = useState('')
+  const [torresTmp, setTorresTmp] = useState([])     // obras (torres) mientras se editan
+  const [nombreTorre, setNombreTorre] = useState('')
   const [savingObra, setSavingObra] = useState(false)
   const [modal, setModal]         = useState(false)
   const [form, setForm]           = useState(emptyForm)
@@ -41,26 +43,56 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
   const verFact     = puedeIr ? puedeIr('facturacion') : false
   const verContr    = puedeIr ? puedeIr('contratos') : false
 
-  // ── Obra de Gestión de Obras vinculada al proyecto ────────
-  async function guardarObraVinculada(obraId) {
+  // ── Obras (torres) de Gestión de Obras vinculadas al proyecto ──
+  // Un contrato puede ejecutarse en varias torres; cada torre es una obra en Gestión.
+  const obrasDeProy = p => [...new Set([...(p?.obras_ids || []), p?.obra_id].filter(Boolean))]
+
+  function abrirTorres() {
+    setTorresTmp(obrasDeProy(proySel))
+    setObraForm('')
+    const n = obrasDeProy(proySel).length + 1
+    setNombreTorre(`${proySel?.nombre || ''} TORRE ${n}`.trim())
+    setModalObra(true)
+  }
+
+  // Los elementos que salieron del contrato deben verse en todas las torres
+  async function sincronizarElementos(torres) {
+    const cts = contratos.filter(c => c.proyecto_id === proySel.id).map(c => c.id)
+    const itemIds = items_contrato.filter(i => cts.includes(i.contrato_id)).map(i => i.id)
+    const eids = [...new Set(subitems_instalacion.filter(p => itemIds.includes(p.item_contrato_id) && p.elemento_id).map(p => p.elemento_id))]
+    const cambiados = []
+    for (const eid of eids) {
+      const el = (dbData.elementos || []).find(e => e.id === eid)
+      if (!el) continue
+      const extra = torres.filter(t => t !== el.obra_id)
+      const { data } = await supabase.from('elementos').update({ obras_extra: extra }).eq('id', eid).select().single()
+      if (data) cambiados.push(data)
+    }
+    if (cambiados.length) setDbData(d => ({ ...d, elementos: (d.elementos || []).map(e => cambiados.find(c => c.id === e.id) || e) }))
+  }
+
+  async function guardarTorres(torres) {
     setSavingObra(true)
     try {
       const { data, error } = await supabase.from('proyectos')
-        .update({ obra_id: obraId || null }).eq('id', proySel.id).select().single()
+        .update({ obras_ids: torres, obra_id: torres[0] || null }).eq('id', proySel.id).select().single()
       if (error) throw error
       setDbData(d => ({ ...d, proyectos: d.proyectos.map(p => p.id === data.id ? data : p) }))
       setProySel(data)
-      toast(obraId ? 'Obra vinculada' : 'Vínculo quitado', 'ok')
+      await sincronizarElementos(torres)
+      toast('Torres guardadas', 'ok')
       setModalObra(false)
     } catch (e) { toast('Error: ' + e.message, 'err') }
     setSavingObra(false)
   }
 
-  async function crearObraEnGestion() {
+  async function crearTorreEnGestion() {
+    const nombre = nombreTorre.trim()
+    if (!nombre) { toast('Escribe el nombre de la torre', 'err'); return }
     setSavingObra(true)
     try {
       const nueva = {
-        id: `o${Date.now()}`, nombre: (proySel?.nombre || '').trim(), direccion: '',
+        id: `o${Date.now()}`, nombre, direccion: '',
         estado: 'activa', pisos: [], tipologias: [],
         instaladores_autorizados: [], aptos_habilitados: {}, solicitudes: [], precios_override: {},
         coordinador_id: '',
@@ -68,9 +100,10 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
       const { data: obraCreada, error } = await supabase.from('obras').insert(nueva).select().single()
       if (error) throw error
       setDbData(d => ({ ...d, obras: [...(d.obras || []), obraCreada] }))
-      await guardarObraVinculada(obraCreada.id)
-      toast('Obra creada en Gestión de Obras', 'ok')
-    } catch (e) { toast('Error: ' + e.message, 'err'); setSavingObra(false) }
+      setTorresTmp(t => [...t, obraCreada.id])
+      toast(`"${nombre}" creada en Gestión de Obras. Dale Guardar para dejarla vinculada.`, 'ok')
+    } catch (e) { toast('Error: ' + e.message, 'err') }
+    setSavingObra(false)
   }
 
   // ── Instalación: costo y margen (solo para quien ve facturación) ──
@@ -79,8 +112,10 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
   const esDia       = r => String(r.el || '') === 'Día laborado' || String(r.actividad || '') === 'Día laborado'
 
   function costoInstalacion(proy) {
-    const obra = obras.find(o => o.id === proy?.obra_id)
-    if (!obra) return null
+    const torres = obrasDeProy(proy).map(id => obras.find(o => o.id === id)).filter(Boolean)
+    if (!torres.length) return null
+    const obra = { nombre: torres.map(t => t.nombre).join(' + '), pisos: torres.flatMap(t => t.pisos || []) }
+    const nombresTorres = torres.map(t => t.nombre)
     const cts = contratos.filter(c => c.proyecto_id === proy.id && ['instalacion', 'todo_costo'].includes(c.tipo))
     const its = items_contrato.filter(i => cts.some(c => c.id === i.contrato_id))
     const elsDeItem = itemId => subitems_instalacion.filter(p => p.item_contrato_id === itemId && p.elemento_id).map(p => p.elemento_id)
@@ -102,7 +137,7 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
     const cortes = {}
     const porPersona = {}   // retenidos acumulados por instalador en esta obra
     for (const l of liquidaciones) {
-      const filas = (l.rows || []).filter(r => (r.obra || '') === obra.nombre)
+      const filas = (l.rows || []).filter(r => nombresTorres.includes(r.obra || ''))
       if (!filas.length) continue
       const val = fs => fs.reduce((x, r) => x + Number(r.precio || 0) * Number(r.cant || 1), 0)
       const c = cortes[l.corte] || (cortes[l.corte] = { corte: l.corte, inst: 0, det: 0, adic: 0, dia: 0, dias: 0, personas: [] })
@@ -276,19 +311,19 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
           </div>
 
           {(() => {
-            const obraVinc = obras.find(o => o.id === proySel?.obra_id)
+            const torres = obrasDeProy(proySel).map(id => obras.find(o => o.id === id)).filter(Boolean)
             return (
               <div style={{ ...card, padding: '10px 14px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <div>
-                  <span style={{ fontSize: 11, color: C.g5, textTransform: 'uppercase', letterSpacing: '.06em' }}>Obra en Gestión de Obras</span>
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>
-                    {obraVinc ? `🏗️ ${obraVinc.nombre}` : 'Sin vincular'}
+                  <span style={{ fontSize: 11, color: C.g5, textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                    {torres.length > 1 ? 'Torres en Gestión de Obras' : 'Obra en Gestión de Obras'}
+                  </span>
+                  <div style={{ fontWeight: 700, fontSize: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {torres.length ? torres.map(t => <span key={t.id}>🏗️ {t.nombre}</span>) : 'Sin vincular'}
                   </div>
-                  {!obraVinc && <div style={{ fontSize: 12, color: C.g5 }}>Sin vincular no se puede leer el avance de instalación ni el costo de la obra.</div>}
+                  {!torres.length && <div style={{ fontSize: 12, color: C.g5 }}>Sin vincular no se puede leer el avance de instalación ni el costo de la obra.</div>}
                 </div>
-                <Btn onClick={() => { setObraForm(proySel?.obra_id || ''); setModalObra(true) }}>
-                  {obraVinc ? 'Cambiar obra' : 'Vincular obra'}
-                </Btn>
+                <Btn onClick={abrirTorres}>{torres.length ? 'Torres / obras' : 'Vincular obra'}</Btn>
               </div>
             )
           })()}
@@ -668,23 +703,47 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
 
       {/* ── MODALES (siempre disponibles) ── */}
       {modalObra && (
-        <Modal title="Obra en Gestión de Obras" onClose={() => setModalObra(false)}>
-          <Sel label="Obra" value={obraForm} onChange={e => setObraForm(e.target.value)}>
-            <option value="">— Sin vincular —</option>
-            {obras.map(o => <option key={o.id} value={o.id}>{o.nombre}</option>)}
-          </Sel>
-          <div style={{ borderTop: `1px solid ${C.g2}`, margin: '14px 0 12px', paddingTop: 12 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>¿Todavía no existe allá?</div>
-            <div style={{ fontSize: 12, color: C.g5, marginBottom: 8 }}>
-              Se crea con el nombre del proyecto y queda vinculada. Los pisos, apartamentos y tipologías se arman en Gestión de Obras.
+        <Modal title="Torres del proyecto en Gestión de Obras" onClose={() => setModalObra(false)} wide>
+          <p style={{ fontSize: 13, color: C.g5, marginBottom: 12 }}>
+            Un contrato puede ejecutarse en varias torres. Cada torre es una obra aparte en Gestión de Obras,
+            con su propia nomenclatura, y el ERP suma todas para el contrato.
+          </p>
+          <div style={{ display: 'grid', gap: 6, marginBottom: 14 }}>
+            {torresTmp.length === 0 && <div style={{ fontSize: 13, color: C.g4 }}>Sin torres vinculadas.</div>}
+            {torresTmp.map((id, i) => (
+              <div key={id} style={{ ...card, padding: '8px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 600, fontSize: 14 }}>🏗️ {obras.find(o => o.id === id)?.nombre || id}</span>
+                <span onClick={() => setTorresTmp(t => t.filter(x => x !== id))} title="Quitar del proyecto"
+                  style={{ cursor: 'pointer', color: C.rd, fontWeight: 700 }}>✕</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 12 }}>
+            <div style={{ flex: 1 }}>
+              <Sel label="Agregar una obra que ya existe" value={obraForm} onChange={e => setObraForm(e.target.value)}>
+                <option value="">— Seleccionar —</option>
+                {obras.filter(o => !torresTmp.includes(o.id)).map(o => <option key={o.id} value={o.id}>{o.nombre}</option>)}
+              </Sel>
             </div>
-            <Btn onClick={crearObraEnGestion} disabled={savingObra}>
-              + Crear "{proySel?.nombre}" en Gestión de Obras
-            </Btn>
+            <div style={{ marginBottom: 14 }}>
+              <Btn onClick={() => { if (obraForm) { setTorresTmp(t => [...t, obraForm]); setObraForm('') } }} disabled={!obraForm}>+ Agregar</Btn>
+            </div>
+          </div>
+          <div style={{ borderTop: `1px solid ${C.g2}`, paddingTop: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>¿La torre todavía no existe en Gestión?</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+              <div style={{ flex: 1 }}>
+                <Inp label="Nombre de la torre" value={nombreTorre} onChange={e => setNombreTorre(e.target.value)} />
+              </div>
+              <div style={{ marginBottom: 14 }}>
+                <Btn onClick={crearTorreEnGestion} disabled={savingObra}>+ Crear en Gestión</Btn>
+              </div>
+            </div>
+            <div style={{ fontSize: 12, color: C.g5 }}>Se crea vacía; los pisos, apartamentos y tipologías se arman en Gestión de Obras.</div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
             <Btn onClick={() => setModalObra(false)}>Cancelar</Btn>
-            <Btn variant="primary" onClick={() => guardarObraVinculada(obraForm)} disabled={savingObra}>
+            <Btn variant="primary" onClick={() => guardarTorres(torresTmp)} disabled={savingObra}>
               {savingObra ? 'Guardando…' : 'Guardar'}
             </Btn>
           </div>
