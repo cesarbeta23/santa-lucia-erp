@@ -46,8 +46,16 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
   // Cuenta los elementos del apto y los de sus tipologías extra
   const elsDelApto = apto => [...(apto.elementos || []), ...(apto.elementosExtra || [])]
 
+  // Partes del ítem que de verdad lleva ESTE apto según su tipología en Gestión de Obras.
+  // Si el apto no tiene ninguna, el ítem no aplica para él.
+  const partesEnApto = (apto, itemId) => {
+    const todos = elsDelApto(apto)
+    return elsDeItem(itemId).filter(eid => todos.some(e => e.elementoId === eid))
+  }
+  const aplicaEnApto = (apto, itemId) => partesEnApto(apto, itemId).length > 0
+
   function instaladoEnApto(apto, itemId) {
-    const eids = elsDeItem(itemId)
+    const eids = partesEnApto(apto, itemId)
     if (!eids.length) return 0
     const todos = elsDelApto(apto)
     let min = Infinity
@@ -60,12 +68,28 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
     return min === Infinity ? 0 : min
   }
 
+  // Cuántas unidades del ítem llevan los aptos según Gestión de Obras
+  // (lo que está cargado en las tipologías, instalado o no).
+  function programadoEnApto(apto, itemId) {
+    const eids = partesEnApto(apto, itemId)
+    if (!eids.length) return 0
+    const todos = elsDelApto(apto)
+    let min = Infinity
+    for (const eid of eids) {
+      const cant = todos.filter(e => e.elementoId === eid).reduce((x, e) => x + Number(e.cantidad || 1), 0)
+      min = Math.min(min, cant)
+    }
+    return min === Infinity ? 0 : min
+  }
+  const programadoItem = (obra, itemId) =>
+    aptosDe(obra).reduce((s, a) => s + programadoEnApto(a, itemId), 0)
+
   const instaladoItem = (obra, itemId) =>
     aptosDe(obra).reduce((s, a) => s + instaladoEnApto(a, itemId), 0)
 
   // Cuántas partes de un ítem van chuleadas en un apto (para la vista por apto)
   function parcialEnApto(apto, itemId) {
-    const eids = elsDeItem(itemId)
+    const eids = partesEnApto(apto, itemId)
     const todos = elsDelApto(apto)
     const hechas = eids.filter(eid => todos.some(e => e.elementoId === eid && e.completado)).length
     return { hechas, total: eids.length }
@@ -416,7 +440,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: '#1E3A5F' }}>
-                {['REF', 'DESCRIPCIÓN', 'UM', 'CONTRATADO', 'INSTALADO', 'FACTURADO', 'FALTA INSTALAR', 'POR FACTURAR'].map((h, i) => (
+                {['REF', 'DESCRIPCIÓN', 'UM', 'CONTRATADO', 'EN OBRA', 'INSTALADO', 'FACTURADO', 'FALTA INSTALAR', 'POR FACTURAR'].map((h, i) => (
                   <th key={h} style={{ padding: '9px 10px', textAlign: i < 3 ? 'left' : 'right', color: i < 3 ? '#BFDBFE' : '#93C5FD', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -429,15 +453,24 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                 const faltaInst = contr - inst
                 const porFact   = inst - fact
                 const sinMapa   = elsDeItem(it.id).length === 0
+                const prog      = obra ? programadoItem(obra, it.id) : 0
+                const difProg   = prog - contr
                 return (
                   <tr key={it.id} style={{ borderTop: `1px solid ${C.g1}` }}>
                     <td style={{ padding: '8px 10px', fontWeight: 700, color: '#1D4ED8', whiteSpace: 'nowrap' }}>{it.ref}</td>
                     <td style={{ padding: '8px 10px' }}>
                       {it.descripcion}
-                      {sinMapa && <span style={{ fontSize: 11, color: C.or, marginLeft: 8 }}>⚠️ sin equivalencias</span>}
+                      {sinMapa && <span style={{ fontSize: 11, color: C.or, marginLeft: 8 }}>⚠️ sin desglosar</span>}
                     </td>
                     <td style={{ padding: '8px 10px', color: C.g5 }}>{it.unidad}</td>
                     <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>{contr.toLocaleString('es-CO')}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600,
+                      color: sinMapa || !obra ? C.g3 : difProg === 0 ? C.gnD : C.rd }}
+                      title={sinMapa ? 'Falta desglosar el ítem' : difProg === 0 ? 'Cuadra con el contrato'
+                        : difProg > 0 ? `Los aptos de Gestión llevan ${difProg} más que el contrato` : `A los aptos de Gestión les faltan ${Math.abs(difProg)} frente al contrato`}>
+                      {sinMapa || !obra ? '—' : prog.toLocaleString('es-CO')}
+                      {!sinMapa && obra && difProg !== 0 && <div style={{ fontSize: 10, fontWeight: 700 }}>{difProg > 0 ? `+${difProg}` : difProg} vs contrato</div>}
+                    </td>
                     <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: inst > 0 ? C.gnD : C.g3 }}>{inst.toLocaleString('es-CO')}</td>
                     <td style={{ padding: '8px 10px', textAlign: 'right', color: fact > 0 ? C.bk : C.g3 }}>{fact.toLocaleString('es-CO')}</td>
                     <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700,
@@ -460,8 +493,10 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                   const i2 = obra ? its.reduce((s, i) => s + instaladoItem(obra, i.id), 0) : 0
                   const f = its.reduce((s, i) => s + facturadoItem(i.id), 0)
                   const cel = (v, col) => <td style={{ padding: '9px 10px', textAlign: 'right', color: col }}>{v.toLocaleString('es-CO')}</td>
+                  const p = obra ? its.reduce((s, i) => s + programadoItem(obra, i.id), 0) : 0
                   return <>
                     {cel(c, 'white')}
+                    {cel(p, '#FDE68A')}
                     {cel(i2, '#86EFAC')}
                     {cel(f, '#BFDBFE')}
                     {cel(c - i2, '#FDBA74')}
