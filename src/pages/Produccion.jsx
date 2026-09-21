@@ -14,6 +14,7 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
     proyectos = [], constructoras = [], contratos = [],
     items_contrato = [], lotes_produccion = [], items_lote = [],
     remisiones = [], items_remision = [],
+    obras = [], cantidades_torre = [],
   } = dbData
 
   // Si viene desde el dashboard del proyecto, abrir directo
@@ -28,6 +29,22 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
   const [editando, setEditando]     = useState({})        // { loteId_itemId: valor }
   const [saving, setSaving]         = useState(false)
   const [filtProy, setFiltProy]     = useState('')
+  const [torreSel, setTorreSel]     = useState('')
+
+  // ── Torres: cada lote es de una torre (obra en Gestión de Obras) ──
+  const torresDe = proy => [...new Set([...(proy?.obras_ids || []), proy?.obra_id].filter(Boolean))]
+    .map(id => obras.find(o => o.id === id)).filter(Boolean)
+  const torres  = torresDe(proySel)
+  const multi   = torres.length > 1
+  const tP      = multi ? (torreSel || torres[0].id) : ''       // torre activa ('' si solo hay una)
+  // Lo que no tiene torre (lotes y remisiones de antes) se considera de la primera torre
+  const torreDe = x => x?.obra_id || torres[0]?.id || ''
+  const asignadoTorre = (itemId, obraId) => {
+    const r = cantidades_torre.find(c => c.item_contrato_id === itemId && c.obra_id === obraId)
+    return r ? Number(r.cantidad || 0) : null
+  }
+  // Contratado para la torre activa (null = sin repartir)
+  const contratadoDe = it => multi ? asignadoTorre(it.id, tP) : Number(it.cantidad || 0)
 
   // ── Helpers ───────────────────────────────────────────────
   const cantDespLote = (loteId, itemContratoId) =>
@@ -37,13 +54,15 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
       .reduce((s, i) => s + Number(i.cantidad || 0), 0)
 
   // Despachado total del ítem (todas las remisiones, con o sin lote)
-  const cantDespTotal = (itemContratoId) =>
-    items_remision
-      .filter(i => i.item_contrato_id === itemContratoId)
+  const cantDespTotal = (itemContratoId, obraId = tP) => {
+    const rems = obraId ? remisiones.filter(r => torreDe(r) === obraId).map(r => r.id) : null
+    return items_remision
+      .filter(i => i.item_contrato_id === itemContratoId && (!rems || rems.includes(i.remision_id)))
       .reduce((s, i) => s + Number(i.cantidad || 0), 0)
+  }
 
-  const lotesContrato = (cid) =>
-    lotes_produccion.filter(l => l.contrato_id === cid).sort((a, b) => a.numero - b.numero)
+  const lotesContrato = (cid, obraId = tP) =>
+    lotes_produccion.filter(l => l.contrato_id === cid && (!obraId || torreDe(l) === obraId)).sort((a, b) => a.numero - b.numero)
 
   const itemsLote = (loteId) =>
     items_lote.filter(i => i.lote_id === loteId)
@@ -55,8 +74,9 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
   // primero se llena el Lote 1, lo que sobre cuenta para el Lote 2, y así.
   // Así el avance no depende de a qué lote se le cargó la remisión.
   const despEnLote = (lote, itemContratoId) => {
-    const lotes = lotesContrato(lote.contrato_id)
-    const total = cantDespTotal(itemContratoId)
+    const tLote = multi ? torreDe(lote) : ''
+    const lotes = lotesContrato(lote.contrato_id, tLote)
+    const total = cantDespTotal(itemContratoId, tLote)
     let restante = total
     for (const l of lotes) {
       const plan = Number(items_lote.find(i => i.lote_id === l.id && i.item_contrato_id === itemContratoId)?.cantidad || 0)
@@ -96,10 +116,13 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
     if (!contratoSel || nLotes < 1) return
     const n = Number(nLotes)
     const itsContr = items_contrato.filter(i => i.contrato_id === contratoSel.id)
+    if (multi && itsContr.every(it => asignadoTorre(it.id, tP) === null)) {
+      toast('Primero reparte el contrato por torre (en Despachos o Instalación)', 'err'); return
+    }
     setSaving(true)
     try {
-      // Eliminar lotes anteriores del contrato
-      const lotesAnt = lotes_produccion.filter(l => l.contrato_id === contratoSel.id)
+      // Eliminar los lotes anteriores del contrato (solo los de esta torre)
+      const lotesAnt = lotesContrato(contratoSel.id)
       for (const l of lotesAnt) {
         await supabase.from('items_lote').delete().eq('lote_id', l.id)
         await supabase.from('lotes_produccion').delete().eq('id', l.id)
@@ -114,6 +137,7 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
           numero: i,
           nombre: `Lote ${i}`,
           estado: 'pendiente',
+          obra_id: tP || null,
         }).select().single()
         if (error) throw error
         lotesNuevos.push(lote)
@@ -122,7 +146,7 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
       // Distribuir ítems en lotes
       const itemsLoteNuevos = []
       for (const it of itsContr) {
-        const cant = Number(it.cantidad || 0)
+        const cant = contratadoDe(it) ?? 0
         if (cant < 10) {
           // Cantidad pequeña → todo en Lote 1
           const { data: il, error } = await supabase.from('items_lote').insert({
@@ -161,7 +185,7 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
       setDbData(d => ({
         ...d,
         lotes_produccion: [
-          ...d.lotes_produccion.filter(l => l.contrato_id !== contratoSel.id),
+          ...d.lotes_produccion.filter(l => !lotesAnt.some(x => x.id === l.id)),
           ...lotesNuevos,
         ],
         items_lote: [
@@ -295,6 +319,17 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
             <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>{tipo} {contratoSel.numero ? `#${contratoSel.numero}` : ''}</h1>
             <div style={{ fontSize: 13, color: C.g5 }}>{proySel?.nombre}{verValorContrato ? ` · ${fmt(contratoSel.valor_total)}` : ''}</div>
           </div>
+          {multi && (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: C.g5 }}>TORRE:</span>
+              {torres.map(t => (
+                <button key={t.id} onClick={() => setTorreSel(t.id)} style={{
+                  padding: '5px 12px', borderRadius: 999, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', fontWeight: 600,
+                  border: `1px solid ${tP === t.id ? C.or : C.g2}`, background: tP === t.id ? C.or : 'white', color: tP === t.id ? 'white' : C.g5,
+                }}>{t.nombre}</button>
+              ))}
+            </div>
+          )}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
             {editable && <Btn onClick={() => setModalLotes(true)}>
               {lotes.length ? '🔄 Regenerar lotes' : '⚙️ Definir lotes'}
@@ -369,7 +404,7 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
                 </thead>
                 <tbody>
                   {itsContr.map((it, idx) => {
-                    const contratado = Number(it.cantidad || 0)
+                    const contratado = contratadoDe(it) ?? 0
                     const totalPlan  = lotes.reduce((s, l) => {
                       const il = items_lote.find(i => i.lote_id === l.id && i.item_contrato_id === it.id)
                       return s + Number(il?.cantidad || 0)
@@ -441,7 +476,7 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
                   <tr style={{ background: '#1E3A5F', borderTop: `2px solid ${C.g2}` }}>
                     <td colSpan={3} style={{ padding: '9px 12px', color: 'white', fontWeight: 700, fontSize: 11 }}>TOTAL</td>
                     <td style={{ padding: '9px 12px', textAlign: 'right', color: 'white', fontWeight: 700 }}>
-                      {itsContr.reduce((s, it) => s + Number(it.cantidad||0), 0).toLocaleString('es-CO')}
+                      {itsContr.reduce((s, it) => s + (contratadoDe(it) ?? 0), 0).toLocaleString('es-CO')}
                     </td>
                     {lotes.map(l => (
                       <td key={l.id} style={{ padding: '9px 10px', textAlign: 'center', color: 'white', fontWeight: 700, borderLeft: '1px solid #2D5A8E' }}>
@@ -452,7 +487,7 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
                       {items_lote.filter(i => lotes.some(l => l.id === i.lote_id)).reduce((s,i) => s+Number(i.cantidad||0), 0).toLocaleString('es-CO')}
                     </td>
                     {(() => {
-                      const totC = itsContr.reduce((s, it) => s + Number(it.cantidad || 0), 0)
+                      const totC = itsContr.reduce((s, it) => s + (contratadoDe(it) ?? 0), 0)
                       const totD = itsContr.reduce((s, it) => s + cantDespTotal(it.id), 0)
                       const totF = totC - totD
                       return <>
@@ -537,7 +572,7 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
         {modalLotes && (
           <Modal title="Definir lotes de producción" onClose={() => setModalLotes(false)}>
             <p style={{ fontSize: 13, color: C.g5, marginBottom: 16 }}>
-              Define cuántos lotes tiene este contrato. El sistema dividirá las cantidades automáticamente.<br/>
+              Define cuántos lotes tiene este contrato{multi ? <> para <strong>{torres.find(t => t.id === tP)?.nombre}</strong> (con lo que le tocó a esa torre en el reparto)</> : null}. El sistema dividirá las cantidades automáticamente.<br/>
               <span style={{ fontSize: 12, color: C.g4 }}>Ítems con menos de 10 unidades irán completos en el Lote 1.</span>
             </p>
             <Inp label="Número de lotes *" type="number" value={nLotes}

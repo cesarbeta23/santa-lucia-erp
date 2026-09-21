@@ -810,7 +810,9 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
             <select value={formRem.lote_id || ''} onChange={e => setFormRem(f => ({ ...f, lote_id: e.target.value || null }))}
               style={{ width: '100%', padding: '8px 12px', border: `1px solid ${C.g2}`, borderRadius: 8, fontSize: 14, background: C.wh }}>
               <option value="">— Sin lote —</option>
-              {lotes_produccion.filter(l => l.contrato_id === contratoSel?.id).sort((a,b) => a.numero-b.numero).map(l => (
+              {lotes_produccion.filter(l => l.contrato_id === contratoSel?.id
+                  && (!formRem.obra_id || (l.obra_id || torresDe(proySel)[0]?.id) === formRem.obra_id))
+                .sort((a,b) => a.numero-b.numero).map(l => (
                 <option key={l.id} value={l.id}>{l.nombre}</option>
               ))}
             </select>
