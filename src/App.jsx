@@ -389,7 +389,7 @@ export default function App() {
     try {
       const tables = [
         'constructoras', 'proyectos', 'contratos', 'items_contrato',
-        'cotizaciones', 'adicionales', 'pedidos', 'items_pedido', 'proveedores',
+        'cotizaciones', 'adicionales', 'pedidos', 'items_pedido', 'proveedores', 'ingresos_material',
         'remisiones', 'items_remision', 'items_control_despacho', 'lotes_produccion', 'items_lote', 'actas_facturacion',
         'items_acta_facturacion', 'actas_instalacion', 'items_acta_instalacion',
         'subitems_instalacion', 'mapa_items_instalacion',

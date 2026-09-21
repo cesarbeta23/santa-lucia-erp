@@ -15,7 +15,7 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
   const {
     proyectos = [], constructoras = [], contratos = [],
     items_contrato = [], actas_facturacion = [],
-    pedidos = [], items_pedido = [], items_despacho = [],
+    pedidos = [], items_pedido = [], ingresos_material = [],
     adicionales = [], remisiones = [], items_remision = [],
     lotes_produccion = [], items_lote = [],
     obras = [], subitems_instalacion = [], liquidaciones = [],
@@ -187,7 +187,7 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
     actas_facturacion.filter(a => a.contrato_id === cid).reduce((s, a) => s + (Number(a.total) || 0), 0)
 
   const cantRecibida = itemId =>
-    (items_despacho || []).filter(d => d.item_pedido_id === itemId).reduce((s, d) => s + (Number(d.cantidad) || 0), 0)
+    (ingresos_material || []).filter(d => d.item_pedido_id === itemId).reduce((s, d) => s + (Number(d.cantidad) || 0), 0)
 
   const filtered = proyectos.filter(p => {
     const c = constructoras.find(x => x.id === p.constructora_id)

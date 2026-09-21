@@ -75,7 +75,7 @@ Responde SOLO con JSON válido sin texto adicional:
 export default function Pedidos({ dbData, setDbData, toast, nav, irA, puedeEditar, verValoresCompra = true }) {
   const editable = puedeEditar ? puedeEditar('pedidos') : true
   const verVr    = verValoresCompra
-  const { pedidos = [], items_pedido = [], proyectos = [], constructoras = [], items_despacho = [], despachos = [], proveedores = [] } = dbData
+  const { pedidos = [], items_pedido = [], proyectos = [], constructoras = [], ingresos_material = [], proveedores = [] } = dbData
   const navPedido = nav?.pedidoId ? pedidos.find(p => p.id === nav.pedidoId) : null
 
   const [vista, setVista]           = useState(navPedido ? 'detalle' : 'lista')
@@ -106,8 +106,8 @@ export default function Pedidos({ dbData, setDbData, toast, nav, irA, puedeEdita
 
   // Calcular cantidad recibida de un ítem
   const cantRecibida = (itemId) => {
-    // Suma de ingresos registrados en items_despacho para este ítem de pedido
-    return (items_despacho || [])
+    // Suma de los ingresos de material registrados para este ítem del pedido
+    return (ingresos_material || [])
       .filter(d => d.item_pedido_id === itemId)
       .reduce((s, d) => s + (Number(d.cantidad) || 0), 0)
   }
@@ -274,30 +274,16 @@ export default function Pedidos({ dbData, setDbData, toast, nav, irA, puedeEdita
     if (!formIngreso.cantidad || !formIngreso.fecha) { toast('Ingresa fecha y cantidad', 'err'); return }
     try {
       const row = {
-        despacho_id: null,
         item_pedido_id: modalItemSel.id,
-        cantidad: Number(formIngreso.cantidad),
-      }
-      // Crear un despacho-ingreso si no existe uno del día
-      let despachoId = null
-      const { data: d2, error: e2 } = await supabase.from('despachos').insert({
         proyecto_id: pedidoSel.proyecto_id,
         fecha: formIngreso.fecha,
-        numero: formIngreso.numero_factura || null,
+        cantidad: Number(formIngreso.cantidad),
+        numero_factura: formIngreso.numero_factura || null,
         notas: formIngreso.notas || null,
-      }).select().single()
-      if (e2) throw e2
-      despachoId = d2.id
-      row.despacho_id = despachoId
-
-      const { data: ing, error: e3 } = await supabase.from('items_despacho').insert(row).select().single()
-      if (e3) throw e3
-
-      setDbData(d => ({
-        ...d,
-        despachos: [...(d.despachos||[]), d2],
-        items_despacho: [...(d.items_despacho||[]), ing],
-      }))
+      }
+      const { data: ing, error } = await supabase.from('ingresos_material').insert(row).select().single()
+      if (error) throw error
+      setDbData(d => ({ ...d, ingresos_material: [...(d.ingresos_material || []), ing] }))
       toast('Ingreso registrado', 'ok'); setModalIngreso(false)
     } catch (e) { toast('Error: ' + e.message, 'err') }
   }
