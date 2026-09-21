@@ -24,6 +24,7 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
   const [vista, setVista]         = useState(navProy ? 'dashboard' : 'lista')
   const [proySel, setProySel]     = useState(navProy || null)
   const [corteDet, setCorteDet]   = useState(null)
+  const [retDet, setRetDet]       = useState(null)     // reporte de retenidos por instalador
   const [modalObra, setModalObra] = useState(false)
   const [obraForm, setObraForm]   = useState('')
   const [savingObra, setSavingObra] = useState(false)
@@ -98,6 +99,7 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
     const valorInstalado = its.reduce((s2, it) => s2 + instaladoItem(it.id) * Number(it.vr_unitario || 0), 0)
 
     const cortes = {}
+    const porPersona = {}   // retenidos acumulados por instalador en esta obra
     for (const l of liquidaciones) {
       const filas = (l.rows || []).filter(r => (r.obra || '') === obra.nombre)
       if (!filas.length) continue
@@ -114,6 +116,10 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
       const brutoObra = inst + det + adic
       const retObra = Math.round(brutoObra * 0.10)
       c.inst += inst; c.det += det; c.adic += adic; c.dia += dia; c.dias += dias; c.ret = (c.ret || 0) + retObra
+      const kP = l.inst_id || l.inst_nombre
+      const pp = porPersona[kP] || (porPersona[kP] = { nombre: l.inst_nombre || '—', cedula: l.inst_cedula, causado: 0, ret: 0, cortes: [] })
+      pp.causado += brutoObra; pp.ret += retObra
+      pp.cortes.push({ corte: l.corte, causado: brutoObra, ret: retObra })
       c.personas.push({
         nombre: l.inst_nombre, inst, det, adic, dia, dias,
         ret: retObra, neto: brutoObra - retObra + dia,
@@ -126,7 +132,8 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
     const diasTot = lista.reduce((s2, c) => s2 + c.dias, 0)
     const diasVal = lista.reduce((s2, c) => s2 + c.dia, 0)
     const retTot  = lista.reduce((s2, c) => s2 + (c.ret || 0), 0)
-    return { obra, valorInstalado, pagado, margen: valorInstalado - pagado, cortes: lista, diasTot, diasVal, retTot }
+    const retenidos = Object.values(porPersona).filter(p => p.ret > 0).sort((a, b) => b.ret - a.ret)
+    return { obra, valorInstalado, pagado, margen: valorInstalado - pagado, cortes: lista, diasTot, diasVal, retTot, retenidos }
   }
 
   // ── Navegación a otros módulos desde el dashboard ─────────
@@ -451,8 +458,9 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
                     <Stat label="Margen" value={fmt(ci.margen)} color={ci.margen >= 0 ? C.gnD : C.rd} sub={`${Math.round(pctM)}% de lo instalado`} />
                   </div>
                   {ci.retTot > 0 && (
-                    <div style={{ ...card, padding: '8px 14px', marginBottom: 6, fontSize: 13, display: 'flex', justifyContent: 'space-between' }}>
-                      <span>🧾 Retenido 10% en esta obra</span>
+                    <div style={{ ...card, padding: '8px 14px', marginBottom: 6, fontSize: 13, display: 'flex', justifyContent: 'space-between', cursor: 'pointer' }}
+                      onClick={() => setRetDet(ci)}>
+                      <span>🧾 Retenido 10% en esta obra <span style={{ color: C.bl, fontSize: 12 }}>· ver por instalador ›</span></span>
                       <strong style={{ color: C.rd }}>{fmt(ci.retTot)}</strong>
                     </div>
                   )}
@@ -641,6 +649,52 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
             <Btn variant="primary" onClick={() => guardarObraVinculada(obraForm)} disabled={savingObra}>
               {savingObra ? 'Guardando…' : 'Guardar'}
             </Btn>
+          </div>
+        </Modal>
+      )}
+
+      {retDet && (
+        <Modal title={`Retenidos por instalador — ${retDet.obra?.nombre || ''}`} onClose={() => setRetDet(null)} wide>
+          <div style={{ ...card, padding: 0, overflow: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: C.g1 }}>
+                  {['INSTALADOR', 'CÉDULA', 'CORTE', 'CAUSADO EN LA OBRA', 'RETENIDO 10%'].map((h, i) => (
+                    <th key={h} style={{ padding: '7px 10px', textAlign: i < 3 ? 'left' : 'right', fontSize: 10, fontWeight: 700, color: C.g5, whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {retDet.retenidos.flatMap((p, i) => [
+                  ...p.cortes.filter(c => c.ret > 0).map((c, j) => (
+                    <tr key={`${i}-${j}`} style={{ borderTop: `1px solid ${C.g1}` }}>
+                      <td style={{ padding: '6px 10px', fontWeight: 600 }}>{j === 0 ? p.nombre : ''}</td>
+                      <td style={{ padding: '6px 10px', color: C.g5 }}>{j === 0 ? (p.cedula || '—') : ''}</td>
+                      <td style={{ padding: '6px 10px' }}>{c.corte}</td>
+                      <td style={{ padding: '6px 10px', textAlign: 'right' }}>{fmt(c.causado)}</td>
+                      <td style={{ padding: '6px 10px', textAlign: 'right', color: C.rd }}>{fmt(c.ret)}</td>
+                    </tr>
+                  )),
+                  <tr key={`t${i}`} style={{ background: C.g0, borderTop: `1px solid ${C.g2}` }}>
+                    <td colSpan={3} style={{ padding: '6px 10px', fontWeight: 700, textAlign: 'right' }}>Total {String(p.nombre).split(' ')[0]}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700 }}>{fmt(p.causado)}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: C.rd }}>{fmt(p.ret)}</td>
+                  </tr>,
+                ])}
+                <tr style={{ background: '#1E3A5F' }}>
+                  <td colSpan={3} style={{ padding: '8px 10px', color: 'white', fontWeight: 700 }}>TOTAL RETENIDO EN LA OBRA</td>
+                  <td style={{ padding: '8px 10px', textAlign: 'right', color: 'white', fontWeight: 700 }}>{fmt(retDet.retenidos.reduce((x, p) => x + p.causado, 0))}</td>
+                  <td style={{ padding: '8px 10px', textAlign: 'right', color: '#FCA5A5', fontWeight: 800 }}>{fmt(retDet.retTot)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p style={{ fontSize: 12, color: C.g5, marginTop: 12 }}>
+            El retenido de cada corte es el 10% de lo que la persona causó en esta obra (instalación, detallado y adicionales).
+            Si en el mismo corte trabajó en otras obras, lo retenido allá sale en el reporte de esas obras.
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+            <Btn onClick={() => setRetDet(null)}>Cerrar</Btn>
           </div>
         </Modal>
       )}
