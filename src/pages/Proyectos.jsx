@@ -111,6 +111,26 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
   const esAdicional = r => String(r.el || '').startsWith('[Adicional]')
   const esDia       = r => String(r.el || '') === 'Día laborado' || String(r.actividad || '') === 'Día laborado'
 
+  // Adicionales marcados en Gestión, según de quién son (el ERP puede corregir la clasificación)
+  function adicionalesPorResponsable(proy) {
+    const res = { obra: 0, santalucia: 0, sin: 0, nSL: 0 }
+    for (const t of obrasDeProy(proy).map(id => obras.find(o => o.id === id)).filter(Boolean)) {
+      for (const p of t.pisos || []) for (const a of p.aptos || []) {
+        const lista = [...(a.elementos || []), ...(a.elementosExtra || [])]
+        lista.forEach((el, i) => {
+          if (!el.esAdicional || !el.completado) return
+          const ref = `${t.id}|${a.id}|${el.descripcion || ''}|${el.fecha || ''}|${i}`
+          const reg = adicionales.find(x => x.gestion_ref === ref)
+          const resp = reg?.responsable || el.responsable || 'sin'
+          const v = Number(el.valorUnitario || 0) * Number(el.cantidad || 1)
+          res[resp] = (res[resp] || 0) + v
+          if (resp === 'santalucia') res.nSL++
+        })
+      }
+    }
+    return res
+  }
+
   function costoInstalacion(proy) {
     const torres = obrasDeProy(proy).map(id => obras.find(o => o.id === id)).filter(Boolean)
     if (!torres.length) return null
@@ -530,6 +550,22 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
                     <Stat label="Pagado a la gente" value={fmt(ci.pagado)} color={C.am} />
                     <Stat label="Margen" value={fmt(ci.margen)} color={ci.margen >= 0 ? C.gnD : C.rd} sub={`${Math.round(pctM)}% de lo instalado`} />
                   </div>
+                  {(() => {
+                    const ad = adicionalesPorResponsable(proySel)
+                    if (!ad.santalucia && !ad.obra && !ad.sin) return null
+                    return (
+                      <div style={{ ...card, padding: '8px 14px', marginBottom: 6, fontSize: 13, cursor: puede('adicionales') ? 'pointer' : 'default' }}
+                        onClick={() => puede('adicionales') && ir('adicionales', {})}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span>🪵 Adicionales asumidos por Santa Lucía {ad.nSL ? `(${ad.nSL})` : ''}</span>
+                          <strong style={{ color: C.rd }}>{fmt(ad.santalucia)}</strong>
+                        </div>
+                        <div style={{ fontSize: 11, color: C.g5, marginTop: 2 }}>
+                          Adicionales de la obra pagados al instalador: {fmt(ad.obra)}{ad.sin ? ` · sin clasificar: ${fmt(ad.sin)}` : ''}
+                        </div>
+                      </div>
+                    )
+                  })()}
                   {ci.retTot > 0 && (
                     <div style={{ ...card, padding: '8px 14px', marginBottom: 6, fontSize: 13, display: 'flex', justifyContent: 'space-between', cursor: 'pointer' }}
                       onClick={() => setRetDet(ci)}>

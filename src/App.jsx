@@ -397,7 +397,9 @@ export default function App() {
         'obras', 'elementos', 'liquidaciones', 'usuarios',
       ]
       const results = await Promise.all(
-        tables.map(t => supabase.from(t).select('*').then(r => ({ t, data: r.data || [], error: r.error })))
+        // De usuarios solo se traen los datos básicos: nunca el PIN
+        tables.map(t => supabase.from(t).select(t === 'usuarios' ? 'id,nombre,email,rol,rol_erp,oficio,cedula' : '*')
+          .then(r => ({ t, data: r.data || [], error: r.error })))
       )
       if (results.some(r => r.error && /jwt|token/i.test(r.error.message || ''))) {
         logout(); toast('Tu sesión venció, vuelve a ingresar', 'info'); return
