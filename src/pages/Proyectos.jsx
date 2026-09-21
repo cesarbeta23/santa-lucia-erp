@@ -242,9 +242,10 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
   const totalFact      = contrProy.reduce((s, c) => s + totalFacturado(c.id), 0)
   const pctFact        = totalContratos > 0 ? (totalFact / totalContratos) * 100 : 0
   const itemsPed       = pedProy.flatMap(p => items_pedido.filter(i => i.pedido_id === p.id))
-  const totalPedido    = itemsPed.reduce((s, i) => s + Number(i.cantidad_pedida || 0), 0)
-  const totalRecibido  = itemsPed.reduce((s, i) => s + cantRecibida(i.id), 0)
-  const pctPed         = totalPedido > 0 ? (totalRecibido / totalPedido) * 100 : 0
+  // Materiales en plata (con IVA): lo comprado y lo que ya llegó a la obra
+  const valorComprado  = itemsPed.reduce((s, i) => s + Number(i.cantidad_pedida || 0) * Number(i.vr_unitario || 0), 0) * 1.19
+  const valorRecibido  = itemsPed.reduce((s, i) => s + Math.min(cantRecibida(i.id), Number(i.cantidad_pedida || 0)) * Number(i.vr_unitario || 0), 0) * 1.19
+  const pctPed         = valorComprado > 0 ? (valorRecibido / valorComprado) * 100 : 0
   const adPend         = adProy.filter(a => a.estado === 'pendiente').length
   const adCobrar       = adProy.filter(a => a.cobrar_a_obra && !a.aprobado).length
 
@@ -345,25 +346,28 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
               <h3 style={h3}>📦 Materiales {linkMod('pedidos', 'Ver pedidos')}</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
                 <div style={{ ...card, padding: '10px 12px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 11, color: C.g4, marginBottom: 4 }}>Pedido</div>
-                  <div style={{ fontSize: 18, fontWeight: 700 }}>{totalPedido.toLocaleString('es-CO')}</div>
+                  <div style={{ fontSize: 11, color: C.g4, marginBottom: 4 }}>Comprado</div>
+                  <div style={{ fontSize: 16, fontWeight: 700 }}>{verFinanzas ? fmt(valorComprado) : '—'}</div>
+                  <div style={{ fontSize: 10, color: C.g4 }}>con IVA</div>
                 </div>
                 <div style={{ ...card, padding: '10px 12px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 11, color: C.g4, marginBottom: 4 }}>Recibido</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: C.gnD }}>{totalRecibido.toLocaleString('es-CO')}</div>
+                  <div style={{ fontSize: 11, color: C.g4, marginBottom: 4 }}>Ha llegado</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: C.gnD }}>{verFinanzas ? fmt(valorRecibido) : '—'}</div>
+                  <div style={{ fontSize: 10, color: C.g4 }}>a la obra</div>
                 </div>
                 <div style={{ ...card, padding: '10px 12px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 11, color: C.g4, marginBottom: 4 }}>Pendiente</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: C.am }}>{(totalPedido - totalRecibido).toLocaleString('es-CO')}</div>
+                  <div style={{ fontSize: 11, color: C.g4, marginBottom: 4 }}>% llegado</div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: pctPed >= 100 ? C.gnD : C.am }}>{Math.round(pctPed)}%</div>
+                  <div style={{ fontSize: 10, color: C.g4 }}>del valor comprado</div>
                 </div>
               </div>
               <Progress value={pctPed} />
               <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {pedProy.map(p => {
                   const its = items_pedido.filter(i => i.pedido_id === p.id)
-                  const rec = its.reduce((s,i) => s + cantRecibida(i.id), 0)
-                  const ped2 = its.reduce((s,i) => s + Number(i.cantidad_pedida||0), 0)
-                  const pct2 = ped2 > 0 ? (rec/ped2)*100 : 0
+                  const val2 = its.reduce((s,i) => s + Number(i.cantidad_pedida||0)*Number(i.vr_unitario||0), 0)
+                  const rec2 = its.reduce((s,i) => s + Math.min(cantRecibida(i.id), Number(i.cantidad_pedida||0))*Number(i.vr_unitario||0), 0)
+                  const pct2 = val2 > 0 ? (rec2/val2)*100 : 0
                   return (
                     <div key={p.id} style={{ ...card, padding: '10px 14px', ...(puede('pedidos') ? { cursor: 'pointer' } : {}) }}
                       {...clic('pedidos')} onClick={() => puede('pedidos') && ir('pedidos', { pedidoId: p.id })}>
@@ -381,7 +385,7 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
                       </div>
                       <Progress value={pct2} />
                       <div style={{ fontSize: 11, color: C.g5, marginTop: 4 }}>
-                        {rec.toLocaleString('es-CO')} / {ped2.toLocaleString('es-CO')} und
+                        {Math.round(pct2)}% llegado{verFinanzas ? ` · ${fmt(rec2 * 1.19)} de ${fmt(val2 * 1.19)}` : ''}
                       </div>
                     </div>
                   )
