@@ -4,6 +4,22 @@ import { supabase, setAccessToken } from './lib/supabase.js'
 import { apiUrl } from './lib/api.js'
 
 const SESION_KEY = 'sl_erp_session'
+const GESTION_URL = 'https://gestion-obras-gilt.vercel.app'
+const ROLES_GESTION = ['superadmin', 'supervisor', 'auxiliar', 'instalador']
+
+// Abre Gestión de Obras con la sesión actual, sin volver a ingresar
+async function irAGestion(toast) {
+  const ventana = window.open('about:blank', '_blank')   // se abre de una para que no la bloquee el navegador
+  try {
+    const token = JSON.parse(localStorage.getItem(SESION_KEY) || 'null')?.token
+    const r = await fetch(apiUrl('/api/pase-obras'), { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+    const data = await r.json().catch(() => ({}))
+    if (!r.ok || !data.token) { ventana?.close(); toast(data.error || 'No se pudo abrir Gestión de Obras', 'err'); return }
+    const sso = btoa(unescape(encodeURIComponent(JSON.stringify(data))))
+    const url = `${GESTION_URL}/#sso=${encodeURIComponent(sso)}`
+    if (ventana) ventana.location.href = url; else window.location.href = url
+  } catch { ventana?.close(); toast('Error de conexión', 'err') }
+}
 
 // ── Páginas (esqueleto — se llenan módulo por módulo) ──────
 import Dashboard    from './pages/Dashboard.jsx'
@@ -180,7 +196,7 @@ function Login({ onLogin }) {
 }
 
 // ── Sidebar ────────────────────────────────────────────────
-function Sidebar({ user, view, setView, onLogout }) {
+function Sidebar({ user, view, setView, onLogout, onIrGestion }) {
   const visibleModules = MODULES.map(sec => ({
     ...sec,
     items: sec.items.filter(it => it.roles.includes(user.rol)),
@@ -244,6 +260,17 @@ function Sidebar({ user, view, setView, onLogout }) {
           </div>
         ))}
       </nav>
+
+      {/* Salto a Gestión de Obras */}
+      {ROLES_GESTION.includes(user.rol_obras) && onIrGestion && (
+        <div style={{ padding: '0 10px 10px' }}>
+          <button onClick={onIrGestion} title="Abrir Gestión de Obras sin volver a ingresar" style={{
+            width: '100%', padding: '9px 10px', borderRadius: 8, border: `1px solid ${C.or}`,
+            background: 'transparent', color: C.or, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}>↗ Gestión de Obras</button>
+        </div>
+      )}
 
       {/* Usuario */}
       <div style={{
@@ -441,7 +468,7 @@ export default function App() {
           {esMovil() && <div onClick={() => setMenuAbierto(false)}
             style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 40 }} />}
           <div style={esMovil() ? { position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 50 } : {}}>
-            <Sidebar user={user} view={view} setView={irMenu} onLogout={logout} />
+            <Sidebar user={user} view={view} setView={irMenu} onLogout={logout} onIrGestion={() => irAGestion(toast)} />
           </div>
         </>
       )}
