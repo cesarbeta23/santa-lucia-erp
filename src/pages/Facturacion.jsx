@@ -255,6 +255,53 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
     setSavingItems(false)
   }
 
+  // Trae de nuevo lo que cambia seguido (chuleos de obra, remisiones, actas)
+  // sin recargar toda la app ni perder la pantalla donde estás.
+  const [refrescando, setRefrescando] = useState(false)
+  async function refrescar() {
+    setRefrescando(true)
+    try {
+      const tablas = ['obras', 'remisiones', 'items_remision', 'actas_facturacion', 'items_acta_facturacion', 'subitems_instalacion']
+      const res = await Promise.all(tablas.map(t => supabase.from(t).select('*').then(r => ({ t, data: r.data, error: r.error }))))
+      const err = res.find(r => r.error)
+      if (err) throw err.error
+      setDbData(d => { const n = { ...d }; res.forEach(r => { n[r.t] = r.data || [] }); return n })
+      if (actaSel) {
+        const a = res.find(r => r.t === 'actas_facturacion').data.find(x => x.id === actaSel.id)
+        if (a) setActaSel(a)
+      }
+      toast('Datos actualizados', 'ok')
+    } catch (e) { toast('Error: ' + e.message, 'err') }
+    setRefrescando(false)
+  }
+
+  // ── 2. Crear un acta con todo lo que está pendiente por facturar ──
+  async function crearActaPendiente(contrato) {
+    const its = items_contrato.filter(i => i.contrato_id === contrato.id)
+    const pendientes = its.map(it => {
+      const fact = items_acta_facturacion.filter(r => r.item_contrato_id === it.id).reduce((s, r) => s + Number(r.cantidad || 0), 0)
+      return { it, xf: Math.max(0, cantBase(it.id) - fact) }
+    })
+    if (!pendientes.some(p => p.xf > 0)) { toast('No hay nada pendiente por facturar en este contrato', 'info'); return }
+    try {
+      const previas = actas_facturacion.filter(a => a.contrato_id === contrato.id)
+      const nums = previas.map(a => parseInt(a.numero_acta, 10)).filter(n => !isNaN(n))
+      const siguiente = nums.length ? Math.max(...nums) + 1 : previas.length + 1
+      const nueva = { ...emptyActa, contrato_id: contrato.id, numero_acta: String(siguiente), fecha: new Date().toISOString().slice(0, 10) }
+      const { data: cr, error } = await supabase.from('actas_facturacion').insert(nueva).select().single()
+      if (error) throw error
+      setDbData(d => ({ ...d, actas_facturacion: [...d.actas_facturacion, cr] }))
+      setActaSel(cr); setVista('acta')
+      // Se abre la carga manual con lo pendiente ya puesto, para ajustar antes de guardar
+      setItemsManual(pendientes.map(({ it, xf }) => ({
+        ref: it.ref, descripcion: it.descripcion, unidad: it.unidad,
+        cantidad: xf > 0 ? String(xf) : '', vr_unitario_sin_iva: it.vr_unitario || '',
+      })))
+      setTimeout(() => setModalManual(true), 150)
+      toast(`Acta ${siguiente} creada con lo pendiente. Revisá y guardá.`, 'ok')
+    } catch (e) { toast('Error: ' + e.message, 'err') }
+  }
+
   function abrirManual() {
     const its = items_contrato.filter(i => i.contrato_id === actaSel?.contrato_id)
     setItemsManual(its.map(i => ({ ref: i.ref, descripcion: i.descripcion, unidad: i.unidad, cantidad: '', vr_unitario_sin_iva: i.vr_unitario||'' })))
@@ -475,11 +522,19 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
                         <span style={{ fontSize: 12, fontWeight: 700, color: C.g5, textTransform: 'uppercase', letterSpacing: '.06em' }}>
                           Control {esInstalacion(contrato) ? 'instalación' : 'despacho'} vs facturación
                         </span>
+                        {totalXFact <= 0 && (
+                          <Btn size="sm" onClick={refrescar} disabled={refrescando}>{refrescando ? 'Actualizando…' : '🔄 Actualizar'}</Btn>
+                        )}
                         {totalXFact > 0 && (
                           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                             <div style={{ background: '#FFF7ED', border: `1px solid #FED7AA`, borderRadius: 8, padding: '5px 12px', fontSize: 12 }}>
                               <span style={{ color: '#EA6A0A', fontWeight: 700 }}>⚡ Por facturar: {fmt(totalXFact)}</span>
                             </div>
+                            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            <Btn size="sm" onClick={refrescar} disabled={refrescando}>{refrescando ? 'Actualizando…' : '🔄 Actualizar'}</Btn>
+                            {totalXFact > 0 && (
+                              <Btn size="sm" variant="primary" onClick={() => crearActaPendiente(contrato)}>+ Crear acta con lo pendiente</Btn>
+                            )}
                             <Btn size="sm" onClick={() => {
                               const constr = constructoras.find(c => c.id === proySel.constructora_id)
                               const payload2 = {
@@ -500,6 +555,7 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
                               const v2 = window.open('','_blank','width=960,height=700')
                               if(v2){v2.document.write(html2);v2.document.close()}
                             }}>📊 Exportar cobro</Btn>
+                            </div>
                           </div>
                         )}
                       </div>
