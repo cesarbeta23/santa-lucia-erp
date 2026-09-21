@@ -74,6 +74,7 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
   // ── Instalación: costo y margen (solo para quien ve facturación) ──
   const esDetallado = r => String(r.actividad || '') === 'Detallado' || String(r.el || '').startsWith('[Detallado]')
   const esAdicional = r => String(r.el || '').startsWith('[Adicional]')
+  const esDia       = r => String(r.el || '') === 'Día laborado' || String(r.actividad || '') === 'Día laborado'
 
   function costoInstalacion(proy) {
     const obra = obras.find(o => o.id === proy?.obra_id)
@@ -101,16 +102,21 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
       const filas = (l.rows || []).filter(r => (r.obra || '') === obra.nombre)
       if (!filas.length) continue
       const val = fs => fs.reduce((x, r) => x + Number(r.precio || 0) * Number(r.cant || 1), 0)
-      const c = cortes[l.corte] || (cortes[l.corte] = { corte: l.corte, inst: 0, det: 0, adic: 0, personas: [] })
-      const inst = val(filas.filter(r => !esDetallado(r) && !esAdicional(r)))
+      const c = cortes[l.corte] || (cortes[l.corte] = { corte: l.corte, inst: 0, det: 0, adic: 0, dia: 0, dias: 0, personas: [] })
+      const filasDia = filas.filter(r => esDia(r) && r.apr !== false)
+      const inst = val(filas.filter(r => !esDetallado(r) && !esAdicional(r) && !esDia(r)))
       const det = val(filas.filter(esDetallado))
       const adic = val(filas.filter(esAdicional))
-      c.inst += inst; c.det += det; c.adic += adic
-      c.personas.push({ nombre: l.inst_nombre, inst, det, adic, ret: Number(l.ret || 0), pas: Number(l.pas || 0), bon: Number(l.bon || 0), total: Number(l.total || 0), soloEstaObra: filas.length === (l.rows || []).length })
+      const dia = val(filasDia)
+      const dias = filasDia.reduce((x, r) => x + Number(r.cant || 0), 0)
+      c.inst += inst; c.det += det; c.adic += adic; c.dia += dia; c.dias += dias
+      c.personas.push({ nombre: l.inst_nombre, inst, det, adic, dia, dias, ret: Number(l.retencion ?? l.ret ?? 0), pas: Number(l.pasajes ?? l.pas ?? 0), bon: Number(l.bonificacion ?? l.bon ?? 0), total: Number(l.total || 0), soloEstaObra: filas.length === (l.rows || []).length })
     }
     const lista = Object.values(cortes).sort((a, b) => String(b.corte).localeCompare(String(a.corte)))
-    const pagado = lista.reduce((s2, c) => s2 + c.inst + c.det + c.adic, 0)
-    return { obra, valorInstalado, pagado, margen: valorInstalado - pagado, cortes: lista }
+    const pagado = lista.reduce((s2, c) => s2 + c.inst + c.det + c.adic + c.dia, 0)
+    const diasTot = lista.reduce((s2, c) => s2 + c.dias, 0)
+    const diasVal = lista.reduce((s2, c) => s2 + c.dia, 0)
+    return { obra, valorInstalado, pagado, margen: valorInstalado - pagado, cortes: lista, diasTot, diasVal }
   }
 
   // ── Navegación a otros módulos desde el dashboard ─────────
@@ -434,6 +440,12 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
                     <Stat label="Pagado a la gente" value={fmt(ci.pagado)} color={C.am} />
                     <Stat label="Margen" value={fmt(ci.margen)} color={ci.margen >= 0 ? C.gnD : C.rd} sub={`${Math.round(pctM)}% de lo instalado`} />
                   </div>
+                  {ci.diasTot > 0 && (
+                    <div style={{ ...card, padding: '8px 14px', marginBottom: 10, fontSize: 13, display: 'flex', justifyContent: 'space-between' }}>
+                      <span>📅 Días laborados pagados en esta obra</span>
+                      <strong>{ci.diasTot} día(s) · {fmt(ci.diasVal)}</strong>
+                    </div>
+                  )}
                   <div style={{ display: 'grid', gap: 6 }}>
                     {ci.cortes.map(c => (
                       <div key={c.corte} style={{ ...card, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
@@ -441,10 +453,10 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
                         <div>
                           <div style={{ fontSize: 13, fontWeight: 600 }}>{c.corte} ›</div>
                           <div style={{ fontSize: 11, color: C.g5 }}>
-                            {c.personas.length} persona(s) · instalación {fmt(c.inst)}{c.det ? ` · detallado ${fmt(c.det)}` : ''}{c.adic ? ` · adicionales ${fmt(c.adic)}` : ''}
+                            {c.personas.length} persona(s) · instalación {fmt(c.inst)}{c.det ? ` · detallado ${fmt(c.det)}` : ''}{c.adic ? ` · adicionales ${fmt(c.adic)}` : ''}{c.dias ? ` · ${c.dias} día(s) laborados ${fmt(c.dia)}` : ''}
                           </div>
                         </div>
-                        <div style={{ fontSize: 14, fontWeight: 700 }}>{fmt(c.inst + c.det + c.adic)}</div>
+                        <div style={{ fontSize: 14, fontWeight: 700 }}>{fmt(c.inst + c.det + c.adic + c.dia)}</div>
                       </div>
                     ))}
                   </div>
@@ -623,7 +635,7 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr style={{ background: C.g1 }}>
-                  {['PERSONA', 'INSTALACIÓN', 'DETALLADO', 'ADICIONALES', 'RETENIDO 10%', 'PASAJES', 'BONIFICACIÓN', 'PAGADO'].map((h, i) => (
+                  {['PERSONA', 'INSTALACIÓN', 'DETALLADO', 'ADICIONALES', 'DÍAS LAB.', 'RETENIDO 10%', 'PASAJES', 'BONIFICACIÓN', 'PAGADO'].map((h, i) => (
                     <th key={h} style={{ padding: '7px 10px', textAlign: i === 0 ? 'left' : 'right', fontSize: 10, fontWeight: 700, color: C.g5, whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -638,6 +650,7 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
                     <td style={{ padding: '7px 10px', textAlign: 'right' }}>{fmt(p.inst)}</td>
                     <td style={{ padding: '7px 10px', textAlign: 'right' }}>{p.det ? fmt(p.det) : '—'}</td>
                     <td style={{ padding: '7px 10px', textAlign: 'right' }}>{p.adic ? fmt(p.adic) : '—'}</td>
+                    <td style={{ padding: '7px 10px', textAlign: 'right' }}>{p.dias ? `${p.dias} · ${fmt(p.dia)}` : '—'}</td>
                     <td style={{ padding: '7px 10px', textAlign: 'right', color: C.rd }}>{fmt(p.ret)}</td>
                     <td style={{ padding: '7px 10px', textAlign: 'right' }}>{p.pas ? fmt(p.pas) : '—'}</td>
                     <td style={{ padding: '7px 10px', textAlign: 'right' }}>{p.bon ? fmt(p.bon) : '—'}</td>
