@@ -14,6 +14,7 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
     items_contrato = [], remisiones = [], items_remision = [],
     items_control_despacho = [], actas_facturacion = [],
     items_acta_facturacion = [], lotes_produccion = [], items_lote = [],
+    obras = [], cantidades_torre = [],
   } = dbData
 
   const navProy = nav?.proyectoId ? proyectos.find(p => p.id === nav.proyectoId) : null
@@ -24,6 +25,9 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
   const [modalRem, setModalRem]       = useState(false)
   const [modalControl, setModalControl] = useState(false)
   const [remExpandida, setRemExpandida]   = useState(nav?.remisionId || null)
+  const [torreSel, setTorreSel]           = useState('')      // '' = todas las torres
+  const [modalReparto, setModalReparto]   = useState(null)    // contrato que se está repartiendo
+  const [repartoTmp, setRepartoTmp]       = useState({})
   useEffect(() => {
     if (!nav?.remisionId) return
     const t = setTimeout(() => document.getElementById('rem-' + nav.remisionId)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150)
@@ -39,11 +43,24 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
   // ── Helpers ───────────────────────────────────────────────
   const proyectoName = id => proyectos.find(p => p.id === id)?.nombre || '—'
 
-  // Cantidad total despachada de un ítem del contrato
-  const cantDespachada = (itemContratoId) =>
-    items_remision
-      .filter(i => i.item_contrato_id === itemContratoId)
+  // ── Torres del proyecto (cada una es una obra en Gestión de Obras) ──
+  const torresDe = proy => [...new Set([...(proy?.obras_ids || []), proy?.obra_id].filter(Boolean))]
+    .map(id => obras.find(o => o.id === id)).filter(Boolean)
+  const nombreTorre = id => obras.find(o => o.id === id)?.nombre || ''
+  const asignadoTorre = (itemId, obraId) => {
+    const r = cantidades_torre.find(c => c.item_contrato_id === itemId && c.obra_id === obraId)
+    return r ? Number(r.cantidad || 0) : null
+  }
+  // Contratado según la torre elegida (null = esa torre no tiene reparto)
+  const contratadoDe = it => torreSel ? asignadoTorre(it.id, torreSel) : Number(it.cantidad || 0)
+
+  // Cantidad despachada de un ítem del contrato (todas las torres, o una)
+  const cantDespachada = (itemContratoId, torreId = torreSel) => {
+    const rems = torreId ? remisiones.filter(r => r.obra_id === torreId).map(r => r.id) : null
+    return items_remision
+      .filter(i => i.item_contrato_id === itemContratoId && (!rems || rems.includes(i.remision_id)))
       .reduce((s, i) => s + Number(i.cantidad || 0), 0)
+  }
 
   // Cantidad facturada de un ítem del contrato
   const cantFacturada = (itemContratoId) =>
@@ -57,14 +74,14 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
 
   // Remisiones de un contrato
   const remisContrato = (contratoId) =>
-    remisiones.filter(r => r.contrato_id === contratoId)
+    remisiones.filter(r => r.contrato_id === contratoId && (!torreSel || r.obra_id === torreSel))
       .sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
 
   // % despachado de un contrato
   const pctDespachado = (contratoId) => {
     const items = items_contrato.filter(i => i.contrato_id === contratoId)
     if (!items.length) return 0
-    const totalContr = items.reduce((s, i) => s + Number(i.cantidad || 0), 0)
+    const totalContr = items.reduce((s, i) => s + (contratadoDe(i) ?? 0), 0)
     const totalDesp  = items.reduce((s, i) => s + cantDespachada(i.id), 0)
     return totalContr > 0 ? (totalDesp / totalContr) * 100 : 0
   }
@@ -242,6 +259,7 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
   async function guardarRemision() {
     if (!formRem.numero) { toast('Ingresa el número de remisión', 'err'); return }
     if (!formRem.fecha)  { toast('Ingresa la fecha', 'err'); return }
+    if (torresDe(proySel).length > 1 && !formRem.obra_id) { toast('Elige a qué torre va la remisión', 'err'); return }
     const cantValidas = Object.entries(cantidades).filter(([, v]) => Number(v) > 0)
     if (!cantValidas.length) { toast('Ingresa al menos una cantidad', 'err'); return }
     setSaving(true)
@@ -256,13 +274,14 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
           transportador: formRem.transportador || null,
           notas: formRem.notas || null,
           lote_id: formRem.lote_id || null,
+          obra_id: formRem.obra_id || null,
         }).select().single()
         if (e1) throw e1
         remId = rem.id
         setDbData(d => ({ ...d, remisiones: [...d.remisiones, rem] }))
       } else {
         const { data: rem, error: e1 } = await supabase.from('remisiones')
-          .update({ numero: formRem.numero, fecha: formRem.fecha, transportador: formRem.transportador || null, notas: formRem.notas || null })
+          .update({ numero: formRem.numero, fecha: formRem.fecha, transportador: formRem.transportador || null, notas: formRem.notas || null, obra_id: formRem.obra_id || null })
           .eq('id', editRemId).select().single()
         if (e1) throw e1
         setDbData(d => ({ ...d, remisiones: d.remisiones.map(r => r.id === editRemId ? rem : r) }))
@@ -347,9 +366,44 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
     setSaving(false)
   }
 
+  function abrirReparto(contrato) {
+    const its = items_contrato.filter(i => i.contrato_id === contrato.id)
+    const tmp = {}
+    for (const it of its) for (const t of torresDe(proySel)) {
+      const v = asignadoTorre(it.id, t.id)
+      tmp[`${it.id}|${t.id}`] = v === null ? '' : String(v)
+    }
+    setRepartoTmp(tmp); setModalReparto(contrato)
+  }
+  async function guardarReparto() {
+    const contrato = modalReparto
+    const its = items_contrato.filter(i => i.contrato_id === contrato.id)
+    setSaving(true)
+    try {
+      const filas = []
+      for (const it of its) for (const t of torresDe(proySel)) {
+        const v = repartoTmp[`${it.id}|${t.id}`]
+        if (v === '' || v === undefined) continue
+        filas.push({ item_contrato_id: it.id, obra_id: t.id, cantidad: Number(v) || 0 })
+      }
+      const itemIds = its.map(i => i.id)
+      await supabase.from('cantidades_torre').delete().in('item_contrato_id', itemIds)
+      let nuevas = []
+      if (filas.length) {
+        const { data, error } = await supabase.from('cantidades_torre').insert(filas).select()
+        if (error) throw error
+        nuevas = data
+      }
+      setDbData(d => ({ ...d, cantidades_torre: [...(d.cantidades_torre || []).filter(c => !itemIds.includes(c.item_contrato_id)), ...nuevas] }))
+      toast('Reparto por torre guardado', 'ok')
+      setModalReparto(null)
+    } catch (e) { toast('Error: ' + e.message, 'err') }
+    setSaving(false)
+  }
+
   function abrirNuevaRemision(contrato) {
     setContratoSel(contrato)
-    setFormRem({ numero: '', fecha: '', transportador: '', notas: '' })
+    setFormRem({ numero: '', fecha: '', transportador: '', notas: '', obra_id: torreSel || (torresDe(proySel).length === 1 ? torresDe(proySel)[0].id : '') })
     setEditRemId(null)
     // Pre-cargar ítems del contrato con cantidad 0
     const its = items_contrato.filter(i => i.contrato_id === contrato.id)
@@ -360,7 +414,7 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
   }
 
   function abrirEditarRemision(rem) {
-    setFormRem({ numero: rem.numero, fecha: rem.fecha, transportador: rem.transportador || '', notas: rem.notas || '' })
+    setFormRem({ numero: rem.numero, fecha: rem.fecha, transportador: rem.transportador || '', notas: rem.notas || '', obra_id: rem.obra_id || '' })
     setEditRemId(rem.id)
     const its = items_remision.filter(i => i.remision_id === rem.id)
     const cants = {}
@@ -410,6 +464,19 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
                   </div>
                 </div>
 
+                {torresDe(proySel).length > 1 && (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: C.g5 }}>TORRE:</span>
+                    {[{ id: '', nombre: 'Todas' }, ...torresDe(proySel)].map(t => (
+                      <button key={t.id || 'todas'} onClick={() => setTorreSel(t.id)} style={{
+                        padding: '5px 12px', borderRadius: 999, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', fontWeight: 600,
+                        border: `1px solid ${torreSel === t.id ? C.or : C.g2}`, background: torreSel === t.id ? C.or : 'white', color: torreSel === t.id ? 'white' : C.g5,
+                      }}>{t.nombre}</button>
+                    ))}
+                    {editable && <Btn size="sm" onClick={() => abrirReparto(contrato)}>⚖️ Repartir contrato por torre</Btn>}
+                  </div>
+                )}
+
                 {/* Cuadro de control — ítems del contrato */}
                 <div style={{ ...card, padding: 0, overflow: 'auto', marginBottom: 16 }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 600 }}>
@@ -425,16 +492,20 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
                     </thead>
                     <tbody>
                       {itsContr.map(it => {
-                        const contratado = Number(it.cantidad || 0)
+                        const contrT     = contratadoDe(it)
+                        const contratado = contrT ?? 0
                         const despachado = cantDespachada(it.id)
                         const faltante   = Math.max(0, contratado - despachado)
-                        const completo   = despachado >= contratado
+                        const completo   = contrT !== null && despachado >= contratado
                         return (
                           <tr key={it.id} style={{ borderBottom: `1px solid ${C.g1}`, background: completo ? '#F0FDF4' : '' }}>
                             <td style={{ padding: '8px 12px', fontWeight: 600, color: C.or }}>{it.ref}</td>
                             <td style={{ padding: '8px 12px', maxWidth: 280 }}>{it.descripcion}</td>
                             <td style={{ padding: '8px 12px', textAlign: 'center', color: C.g5 }}>{it.unidad}</td>
-                            <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }}>{contratado.toLocaleString('es-CO')}</td>
+                            <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }}>
+                              {contrT === null ? <span style={{ fontSize: 11, color: C.or }}>sin repartir</span> : contratado.toLocaleString('es-CO')}
+                              {torreSel && contrT !== null && <div style={{ fontSize: 10, color: C.g4, fontWeight: 400 }}>de {Number(it.cantidad || 0).toLocaleString('es-CO')}</div>}
+                            </td>
                             <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: C.gnD }}>{despachado.toLocaleString('es-CO')}</td>
                             <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: faltante > 0 ? 700 : 400, color: faltante > 0 ? C.am : C.gnD }}>{faltante.toLocaleString('es-CO')}</td>
                           </tr>
@@ -477,6 +548,7 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                       <span style={{ color: C.g4, fontSize: 11, transition: 'transform .2s', display: 'inline-block', transform: abierta ? 'rotate(90deg)' : 'rotate(0)' }}>▶</span>
                                       <span style={{ fontWeight: 700, color: C.or }}>REM {rem.numero}</span>
+                                      {rem.obra_id && torresDe(proySel).length > 1 && <span style={{ fontSize: 10, color: C.g5, marginLeft: 6 }}>{nombreTorre(rem.obra_id)}</span>}
                                     </div>
                                     {rem.notas && !abierta && <div style={{ fontSize: 10, color: C.g4, marginTop: 2, marginLeft: 20 }}>{rem.notas}</div>}
                                   </td>
@@ -665,6 +737,57 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
       {vista === 'proyecto' && proySel && renderProyecto()}
 
       {/* Modal nueva/editar remisión */}
+      {modalReparto && (() => {
+        const its = items_contrato.filter(i => i.contrato_id === modalReparto.id)
+        const torres = torresDe(proySel)
+        return (
+          <Modal title="Repartir el contrato por torre" onClose={() => setModalReparto(null)} wide>
+            <p style={{ fontSize: 13, color: C.g5, marginBottom: 10 }}>
+              Cuánto de cada ítem va a cada torre. Con eso el despachado y el faltante de cada torre se comparan contra lo suyo.
+            </p>
+            <div style={{ ...card, padding: 0, overflow: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: C.g1 }}>
+                    <th style={{ padding: '7px 10px', textAlign: 'left' }}>ÍTEM</th>
+                    <th style={{ padding: '7px 10px', textAlign: 'right' }}>CONTRATO</th>
+                    {torres.map(t => <th key={t.id} style={{ padding: '7px 10px', textAlign: 'right', whiteSpace: 'nowrap' }}>{t.nombre}</th>)}
+                    <th style={{ padding: '7px 10px', textAlign: 'right' }}>SIN REPARTIR</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {its.map(it => {
+                    const total = Number(it.cantidad || 0)
+                    const suma = torres.reduce((x, t) => x + (Number(repartoTmp[`${it.id}|${t.id}`]) || 0), 0)
+                    const resto = total - suma
+                    return (
+                      <tr key={it.id} style={{ borderTop: `1px solid ${C.g1}` }}>
+                        <td style={{ padding: '6px 10px' }}><strong style={{ color: C.or }}>{it.ref}</strong> <span style={{ color: C.g5 }}>{String(it.descripcion || '').slice(0, 40)}</span></td>
+                        <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 600 }}>{total.toLocaleString('es-CO')}</td>
+                        {torres.map(t => (
+                          <td key={t.id} style={{ padding: '4px 8px', textAlign: 'right' }}>
+                            <input type="number" min="0" value={repartoTmp[`${it.id}|${t.id}`] ?? ''}
+                              onChange={e => setRepartoTmp(r => ({ ...r, [`${it.id}|${t.id}`]: e.target.value }))}
+                              style={{ width: 80, padding: '4px 6px', border: `1px solid ${C.g2}`, borderRadius: 6, textAlign: 'right', fontSize: 12 }} />
+                          </td>
+                        ))}
+                        <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: resto === 0 ? C.gnD : resto < 0 ? C.rd : C.or }}>
+                          {resto === 0 ? '✓' : resto.toLocaleString('es-CO')}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
+              <Btn onClick={() => setModalReparto(null)}>Cancelar</Btn>
+              <Btn variant="primary" onClick={guardarReparto} disabled={saving}>{saving ? 'Guardando…' : 'Guardar reparto'}</Btn>
+            </div>
+          </Modal>
+        )
+      })()}
+
       {modalRem && contratoSel && (
         <Modal title={editRemId ? `Editar remisión ${formRem.numero}` : 'Nueva remisión'} onClose={() => { setModalRem(false); setCantidades({}); setEditRemId(null) }} wide fullscreen>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0 16px', marginBottom: 16 }}>
@@ -672,6 +795,16 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
             <Inp label="Fecha *" type="date" value={formRem.fecha} onChange={e => setFormRem(f => ({ ...f, fecha: e.target.value }))} />
             <Inp label="Transportador" value={formRem.transportador || ''} onChange={e => setFormRem(f => ({ ...f, transportador: e.target.value }))} placeholder="Ej: Servientrega" />
           </div>
+          {torresDe(proySel).length > 1 && (
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 12, color: C.g5, display: 'block', marginBottom: 5, fontWeight: 500 }}>Torre *</label>
+              <select value={formRem.obra_id || ''} onChange={e => setFormRem(f => ({ ...f, obra_id: e.target.value }))}
+                style={{ width: '100%', padding: '8px 12px', border: `1px solid ${C.g2}`, borderRadius: 8, fontSize: 14, background: C.wh }}>
+                <option value="">— Elegir torre —</option>
+                {torresDe(proySel).map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+              </select>
+            </div>
+          )}
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, color: C.g5, display: 'block', marginBottom: 5, fontWeight: 500 }}>Lote de producción</label>
             <select value={formRem.lote_id || ''} onChange={e => setFormRem(f => ({ ...f, lote_id: e.target.value || null }))}

@@ -91,10 +91,12 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
     actas_facturacion.filter(a => a.contrato_id === cid).reduce((s, a) => s + (Number(a.total) || 0), 0)
 
   // Cantidad despachada de un ítem (desde remisiones)
-  const cantDespachada = (itemContratoId) =>
-    (dbData.items_remision || [])
-      .filter(i => i.item_contrato_id === itemContratoId)
+  const cantDespachada = (itemContratoId, torreId = '') => {
+    const rems = torreId ? (dbData.remisiones || []).filter(r => r.obra_id === torreId).map(r => r.id) : null
+    return (dbData.items_remision || [])
+      .filter(i => i.item_contrato_id === itemContratoId && (!rems || rems.includes(i.remision_id)))
       .reduce((s, i) => s + Number(i.cantidad || 0), 0)
+  }
 
   // Instalado a hoy de un ítem de instalación, leído de Gestión de Obras:
   // cuenta una unidad por apto cuando todas sus partes están chuleadas.
@@ -135,7 +137,7 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
   const esInstalacion = c => c?.tipo === 'instalacion'
   const contratoDeItem = itemId => contratos.find(c => c.id === items_contrato.find(i => i.id === itemId)?.contrato_id)
   // Lo que se puede facturar: en suministro lo despachado, en instalación lo instalado
-  const cantBase = (itemId, torreId = '') => esInstalacion(contratoDeItem(itemId)) ? instaladoItem(itemId, torreId) : cantDespachada(itemId)
+  const cantBase = (itemId, torreId = '') => esInstalacion(contratoDeItem(itemId)) ? instaladoItem(itemId, torreId) : cantDespachada(itemId, torreId)
   const nombreBase = c => esInstalacion(c) ? 'instalado' : 'despachado'
 
   const calcTotales = (items, contrato) => {
@@ -522,7 +524,7 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
                 {/* Cuadro despachos vs facturado */}
                 {(() => {
                   const itsContr = items_contrato.filter(i => i.contrato_id === contrato.id)
-                  const torresC = esInstalacion(contrato) ? torresDe(proySel) : []
+                  const torresC = torresDe(proySel)
                   const tF = torresC.some(t => t.id === torreFact) ? torreFact : ''   // torre elegida (o todas)
                   const pendientes = itsContr.filter(it => {
                     const desp = cantBase(it.id, tF)
@@ -792,7 +794,7 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
             </div>
             {(() => {
               const c = contratos.find(x => x.id === form.contrato_id)
-              const ts = esInstalacion(c) ? torresDe(proyectos.find(p => p.id === c?.proyecto_id)) : []
+              const ts = torresDe(proyectos.find(p => p.id === c?.proyecto_id))
               if (ts.length < 2) return null
               return (
                 <div style={{ gridColumn: '1/-1' }}>
