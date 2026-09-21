@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { C, Btn, Inp, Sel, Txt, Modal, Badge, Empty, SectionHeader, card, fmt, fmtDate, Progress, Stat } from '../components/UI.jsx'
 import { supabase } from '../lib/supabase.js'
+import * as XLSX from 'xlsx'
 
 const emptyForm = { nombre: '', constructora_id: '', estado: 'activo', fecha_inicio: '', fecha_fin: '', notas: '' }
 const ESTADOS = {
@@ -134,6 +135,39 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
     const retTot  = lista.reduce((s2, c) => s2 + (c.ret || 0), 0)
     const retenidos = Object.values(porPersona).filter(p => p.ret > 0).sort((a, b) => b.ret - a.ret)
     return { obra, valorInstalado, pagado, margen: valorInstalado - pagado, cortes: lista, diasTot, diasVal, retTot, retenidos }
+  }
+
+  // ── Exportar el reporte de retenidos a Excel ──────────────
+  function exportarRetenidos(ci) {
+    const filas = [
+      [`Retenidos por instalador — ${ci.obra?.nombre || ''}`],
+      [`Proyecto: ${proySel?.nombre || ''}`, '', '', `Generado: ${new Date().toLocaleDateString('es-CO')}`],
+      [],
+      ['Instalador', 'Cédula', 'Corte', 'Causado en la obra', 'Retenido 10%'],
+    ]
+    for (const p of ci.retenidos) {
+      for (const c of p.cortes.filter(x => x.ret > 0)) {
+        filas.push([p.nombre, p.cedula || '', c.corte, c.causado, c.ret])
+      }
+      filas.push(['', '', `Total ${p.nombre}`, p.causado, p.ret])
+      filas.push([])
+    }
+    filas.push(['TOTAL RETENIDO EN LA OBRA', '', '', ci.retenidos.reduce((x, p) => x + p.causado, 0), ci.retTot])
+
+    const hoja = XLSX.utils.aoa_to_sheet(filas)
+    hoja['!cols'] = [{ wch: 34 }, { wch: 14 }, { wch: 30 }, { wch: 20 }, { wch: 16 }]
+    // formato de pesos en las columnas de valores
+    const rango = XLSX.utils.decode_range(hoja['!ref'])
+    for (let r = 4; r <= rango.e.r; r++) {
+      for (const col of [3, 4]) {
+        const celda = hoja[XLSX.utils.encode_cell({ r, c: col })]
+        if (celda && typeof celda.v === 'number') celda.z = '"$"#,##0'
+      }
+    }
+    const libro = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(libro, hoja, 'Retenidos')
+    const nombre = `Retenidos ${ci.obra?.nombre || 'obra'} ${new Date().toISOString().slice(0, 10)}.xlsx`.replace(/[\\/:*?"<>|]/g, '')
+    XLSX.writeFile(libro, nombre)
   }
 
   // ── Navegación a otros módulos desde el dashboard ─────────
@@ -693,7 +727,8 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
             El retenido de cada corte es el 10% de lo que la persona causó en esta obra (instalación, detallado y adicionales).
             Si en el mismo corte trabajó en otras obras, lo retenido allá sale en el reporte de esas obras.
           </p>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
+            <Btn variant="success" onClick={() => exportarRetenidos(retDet)}>📊 Descargar Excel</Btn>
             <Btn onClick={() => setRetDet(null)}>Cerrar</Btn>
           </div>
         </Modal>

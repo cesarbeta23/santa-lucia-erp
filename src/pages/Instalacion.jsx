@@ -480,6 +480,28 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                     </tr>
                   ))}
                 </tbody>
+                <tfoot>
+                  <tr style={{ background: '#1E3A5F', fontWeight: 700 }}>
+                    <td style={{ padding: '8px 10px', color: 'white', fontSize: 11 }}>INSTALADO</td>
+                    {its.map(it => {
+                      const tot = aptos.reduce((s, a) => s + instaladoEnApto(a, it.id), 0)
+                      return <td key={it.id} style={{ padding: '8px 8px', textAlign: 'center', color: tot > 0 ? '#86EFAC' : '#94A3B8' }}>{tot.toLocaleString('es-CO')}</td>
+                    })}
+                  </tr>
+                  <tr style={{ background: '#1E293B', fontWeight: 600 }}>
+                    <td style={{ padding: '6px 10px', color: '#CBD5E1', fontSize: 11 }}>CONTRATADO</td>
+                    {its.map(it => (
+                      <td key={it.id} style={{ padding: '6px 8px', textAlign: 'center', color: '#CBD5E1' }}>{Number(it.cantidad || 0).toLocaleString('es-CO')}</td>
+                    ))}
+                  </tr>
+                  <tr style={{ background: '#1E293B', fontWeight: 600 }}>
+                    <td style={{ padding: '6px 10px', color: '#CBD5E1', fontSize: 11 }}>FALTA</td>
+                    {its.map(it => {
+                      const falta = Number(it.cantidad || 0) - aptos.reduce((s, a) => s + instaladoEnApto(a, it.id), 0)
+                      return <td key={it.id} style={{ padding: '6px 8px', textAlign: 'center', color: falta > 0 ? '#FDBA74' : '#86EFAC' }}>{falta > 0 ? falta.toLocaleString('es-CO') : '✓'}</td>
+                    })}
+                  </tr>
+                </tfoot>
               </table>
             </div>
       )}
