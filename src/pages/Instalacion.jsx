@@ -4,11 +4,11 @@ import { supabase } from '../lib/supabase.js'
 
 const TIPOS_INST = ['instalacion', 'todo_costo']
 
-export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeEditar, verValorContrato = true }) {
+export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeEditar, verValorContrato = true, user }) {
   const {
     proyectos = [], contratos = [], items_contrato = [], constructoras = [],
     actas_facturacion = [], items_acta_facturacion = [],
-    obras = [], elementos = [], subitems_instalacion = [],
+    obras = [], elementos = [], subitems_instalacion = [], entregas_instalacion = [],
   } = dbData
   const editable = puedeEditar ? puedeEditar('instalacion') : true
 
@@ -69,6 +69,36 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
     const todos = elsDelApto(apto)
     const hechas = eids.filter(eid => todos.some(e => e.elementoId === eid && e.completado)).length
     return { hechas, total: eids.length }
+  }
+
+  // ── Entregas a obra (a satisfacción, con memorando) ───────
+  const entregaDe = (itemId, aptoId) =>
+    entregas_instalacion.find(e => e.item_contrato_id === itemId && e.apto_id === aptoId)
+
+  async function guardarEntrega(it, apto, cambios) {
+    const prev = entregaDe(it.id, apto.id)
+    const fila = {
+      contrato_id: contratoSel.id, item_contrato_id: it.id,
+      obra_id: proySel?.obra_id || null, apto_id: apto.id, apto_nombre: String(apto.nombre || apto.numero || ''),
+      entregado: prev?.entregado || false, memorando: prev?.memorando || null,
+      fecha_entrega: prev?.fecha_entrega || null,
+      ...cambios,
+      registrado_por: user?.nombre || null, updated_at: new Date().toISOString(),
+    }
+    if (cambios.entregado === true && !fila.fecha_entrega) fila.fecha_entrega = new Date().toISOString().slice(0, 10)
+    if (cambios.entregado === false) fila.fecha_entrega = null
+    try {
+      const { data, error } = await supabase.from('entregas_instalacion')
+        .upsert(fila, { onConflict: 'item_contrato_id,apto_id' }).select().single()
+      if (error) throw error
+      setDbData(d => ({
+        ...d,
+        entregas_instalacion: [
+          ...(d.entregas_instalacion || []).filter(e => !(e.item_contrato_id === it.id && e.apto_id === apto.id)),
+          data,
+        ],
+      }))
+    } catch (e) { toast('Error: ' + e.message, 'err') }
   }
 
   const facturadoItem = itemId => items_acta_facturacion
@@ -448,14 +478,21 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
       {tab === 'aptos' && (
         aptos.length === 0
           ? <Empty icon="🏢" title="Sin apartamentos" desc="La obra vinculada no tiene pisos ni apartamentos creados." />
-          : <div style={{ ...card, padding: 0, overflow: 'auto' }}>
+          : <>
+            <div style={{ display: 'flex', gap: 14, fontSize: 12, color: C.g5, marginBottom: 8, flexWrap: 'wrap' }}>
+              <span><span style={{ display: 'inline-block', width: 12, height: 12, background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 3, marginRight: 5, verticalAlign: 'middle' }} />Instalando</span>
+              <span><span style={{ display: 'inline-block', width: 12, height: 12, background: '#DCFCE7', border: '1px solid #BBF7D0', borderRadius: 3, marginRight: 5, verticalAlign: 'middle' }} />Instalado completo</span>
+              <span><span style={{ display: 'inline-block', width: 12, height: 12, background: '#FED7AA', border: '1px solid #FDBA74', borderRadius: 3, marginRight: 5, verticalAlign: 'middle' }} />Entregado a obra</span>
+            </div>
+            <div style={{ ...card, padding: 0, overflow: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ background: '#1E3A5F' }}>
                     <th style={{ padding: '9px 10px', textAlign: 'left', color: '#BFDBFE', fontSize: 10, fontWeight: 700 }}>APTO</th>
-                    {its.map(it => (
-                      <th key={it.id} style={{ padding: '9px 8px', textAlign: 'center', color: '#93C5FD', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>{it.ref}</th>
-                    ))}
+                    {its.map(it => [
+                      <th key={it.id} style={{ padding: '9px 8px', textAlign: 'center', color: '#93C5FD', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap', borderLeft: '2px solid #2D5A8E' }}>{it.ref}</th>,
+                      <th key={it.id + 'e'} style={{ padding: '9px 8px', textAlign: 'center', color: '#FDBA74', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>ENTREGA {it.ref}</th>,
+                    ])}
                   </tr>
                 </thead>
                 <tbody>
@@ -468,14 +505,32 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                       {its.map(it => {
                         const { hechas, total } = parcialEnApto(a, it.id)
                         const listo = total > 0 && hechas === total
-                        return (
-                          <td key={it.id} style={{ padding: '6px 8px', textAlign: 'center', borderLeft: `1px solid ${C.g1}`,
-                            background: listo ? '#DCFCE7' : hechas > 0 ? '#FFF7ED' : undefined }}>
+                        const ent = entregaDe(it.id, a.id)
+                        const entregado = !!ent?.entregado
+                        const fondoEnt = '#FED7AA'   // naranja tenue: ya entregado a obra
+                        return [
+                          <td key={it.id} style={{ padding: '6px 8px', textAlign: 'center', borderLeft: `2px solid ${C.g2}`,
+                            background: entregado ? fondoEnt : listo ? '#DCFCE7' : hechas > 0 ? '#FFF7ED' : undefined }}>
                             {total === 0 ? <span style={{ color: C.g3 }}>—</span>
-                              : listo ? <span style={{ color: C.gnD, fontWeight: 700 }}>✓</span>
+                              : listo ? <span style={{ color: entregado ? '#9A3412' : C.gnD, fontWeight: 700 }}>✓</span>
                               : <span style={{ color: hechas > 0 ? C.or : C.g4, fontSize: 11 }}>{hechas}/{total}</span>}
-                          </td>
-                        )
+                          </td>,
+                          <td key={it.id + 'e'} style={{ padding: '4px 6px', background: entregado ? fondoEnt : undefined, whiteSpace: 'nowrap' }}
+                            title={entregado ? `Entregado a obra${ent.fecha_entrega ? ' el ' + ent.fecha_entrega : ''}${ent.memorando ? ' · memo ' + ent.memorando : ''}` : (listo ? 'Marcar como entregado a obra' : 'Primero debe estar instalado completo')}>
+                            {total === 0 ? <span style={{ color: C.g3 }}>—</span> : (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <input type="checkbox" checked={entregado}
+                                  disabled={!editable || (!listo && !entregado)}
+                                  onChange={e => guardarEntrega(it, a, { entregado: e.target.checked })}
+                                  style={{ cursor: editable && (listo || entregado) ? 'pointer' : 'not-allowed' }} />
+                                <input key={ent?.memorando || ''} defaultValue={ent?.memorando || ''} placeholder="Memo"
+                                  disabled={!editable}
+                                  onBlur={e => { const v = e.target.value.trim(); if (v !== (ent?.memorando || '')) guardarEntrega(it, a, { memorando: v || null }) }}
+                                  style={{ width: 74, padding: '3px 6px', border: `1px solid ${entregado ? '#FDBA74' : C.g2}`, borderRadius: 5, fontSize: 11, background: entregado ? '#FFF7ED' : 'white' }} />
+                              </div>
+                            )}
+                          </td>,
+                        ]
                       })}
                     </tr>
                   ))}
@@ -485,25 +540,34 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                     <td style={{ padding: '8px 10px', color: 'white', fontSize: 11 }}>INSTALADO</td>
                     {its.map(it => {
                       const tot = aptos.reduce((s, a) => s + instaladoEnApto(a, it.id), 0)
-                      return <td key={it.id} style={{ padding: '8px 8px', textAlign: 'center', color: tot > 0 ? '#86EFAC' : '#94A3B8' }}>{tot.toLocaleString('es-CO')}</td>
+                      const ent = aptos.filter(a => entregaDe(it.id, a.id)?.entregado).length
+                      return [
+                        <td key={it.id} style={{ padding: '8px 8px', textAlign: 'center', color: tot > 0 ? '#86EFAC' : '#94A3B8' }}>{tot.toLocaleString('es-CO')}</td>,
+                        <td key={it.id + 'e'} style={{ padding: '8px 8px', textAlign: 'center', color: '#FDBA74', fontSize: 11 }}>{ent} apto(s) entregados</td>,
+                      ]
                     })}
                   </tr>
                   <tr style={{ background: '#1E293B', fontWeight: 600 }}>
                     <td style={{ padding: '6px 10px', color: '#CBD5E1', fontSize: 11 }}>CONTRATADO</td>
-                    {its.map(it => (
-                      <td key={it.id} style={{ padding: '6px 8px', textAlign: 'center', color: '#CBD5E1' }}>{Number(it.cantidad || 0).toLocaleString('es-CO')}</td>
-                    ))}
+                    {its.map(it => [
+                      <td key={it.id} style={{ padding: '6px 8px', textAlign: 'center', color: '#CBD5E1' }}>{Number(it.cantidad || 0).toLocaleString('es-CO')}</td>,
+                      <td key={it.id + 'e'} />,
+                    ])}
                   </tr>
                   <tr style={{ background: '#1E293B', fontWeight: 600 }}>
                     <td style={{ padding: '6px 10px', color: '#CBD5E1', fontSize: 11 }}>FALTA</td>
                     {its.map(it => {
                       const falta = Number(it.cantidad || 0) - aptos.reduce((s, a) => s + instaladoEnApto(a, it.id), 0)
-                      return <td key={it.id} style={{ padding: '6px 8px', textAlign: 'center', color: falta > 0 ? '#FDBA74' : '#86EFAC' }}>{falta > 0 ? falta.toLocaleString('es-CO') : '✓'}</td>
+                      return [
+                        <td key={it.id} style={{ padding: '6px 8px', textAlign: 'center', color: falta > 0 ? '#FDBA74' : '#86EFAC' }}>{falta > 0 ? falta.toLocaleString('es-CO') : '✓'}</td>,
+                        <td key={it.id + 'e'} />,
+                      ]
                     })}
                   </tr>
                 </tfoot>
               </table>
             </div>
+          </>
       )}
 
       {/* ── Partes y pagos ── */}
