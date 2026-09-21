@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { C, Btn, Inp, Sel, Txt, Modal, Badge, Empty, SectionHeader, card, fmt, fmtDate, Stat } from '../components/UI.jsx'
 import { supabase } from '../lib/supabase.js'
+import * as XLSX from 'xlsx'
 
 // Estados de un adicional. Se pueden saltar pasos (a veces se hace y después se negocia).
 const ESTADOS = {
@@ -120,6 +121,76 @@ export default function Adicionales({ dbData, setDbData, toast, nav, irA, puedeE
         setDbData(d => ({ ...d, adicionales: [...(d.adicionales || []), data] }))
       }
     } catch (e) { toast('Error: ' + e.message, 'err') }
+  }
+
+  // ── Exportables para cobrarle a la obra ──────────────────
+  function filasCobro(lista) {
+    return lista.map(u => ({
+      fecha: u.fecha || '', torre: u.torre || '', apto: u.apto || '', descripcion: u.descripcion,
+      memorando: u.memorando || '', cantidad: u.cantidad,
+      unit: u.cantidad ? Math.round(u.cobro / u.cantidad) : Math.round(u.cobro), total: Math.round(u.cobro),
+    }))
+  }
+
+  function exportarCobroPDF(lista) {
+    const constr = constructoras.find(c => c.id === proySel.constructora_id)
+    const filas = filasCobro(lista)
+    const total = filas.reduce((s, f) => s + f.total, 0)
+    const conTorre = torresDe(proySel).length > 1
+    const $ = n => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n || 0)
+    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Cobro adicionales ${proySel.nombre}</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1a1a2e}.page{padding:28px 32px}
+.header{background:#1F3A5F;color:white;padding:18px 24px;border-radius:8px 8px 0 0}.header h1{font-size:18px;font-weight:800;margin-bottom:2px}
+.header p{font-size:11px;color:#93C5FD;font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.sub{background:#1E293B;padding:10px 24px;border-radius:0 0 8px 8px;margin-bottom:20px;display:flex;gap:32px;flex-wrap:wrap}
+.l{font-size:9px;color:#64748B;text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px}.v{font-size:12px;color:white;font-weight:700}
+table{width:100%;border-collapse:collapse}thead th{background:#1E3A5F;padding:9px 10px;color:white;font-size:9px;font-weight:700;text-transform:uppercase;border:1px solid #2D5A8E;text-align:left}
+tbody td{padding:8px 10px;border:1px solid #E2E8F0;font-size:10px}tbody tr:nth-child(even){background:#F8FAFC}.r{text-align:right}
+.tot td{background:#1E3A5F;color:white;font-weight:700;font-size:12px;padding:11px 10px}
+.nota{margin-top:16px;padding:12px 16px;background:#F1F5F9;border-left:3px solid #1E3A5F;border-radius:4px;font-size:9px;color:#64748B;line-height:1.6}
+.firmas{display:flex;gap:40px;margin-top:48px}.firma{flex:1;border-top:1px solid #94A3B8;padding-top:6px;font-size:10px;color:#475569;text-align:center}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.np{display:none}}</style></head><body><div class="page">
+<div class="np" style="text-align:right;margin-bottom:16px"><button onclick="window.print()" style="background:#1E3A5F;color:white;border:none;padding:10px 24px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer">🖨️ Guardar / Imprimir PDF</button></div>
+<div class="header"><h1>🪵 Santa Lucía Muebles y Pisos S.A.S.</h1><p>Cuenta de cobro — Adicionales de obra</p></div>
+<div class="sub">
+<div><div class="l">Constructora</div><div class="v">${constr?.nombre || '—'}</div></div>
+<div><div class="l">Proyecto</div><div class="v">${proySel.nombre}</div></div>
+<div><div class="l">Fecha</div><div class="v">${new Date().toLocaleDateString('es-CO')}</div></div>
+<div><div class="l">NIT</div><div class="v">900.602.879-5</div></div></div>
+<table><thead><tr><th>Fecha</th>${conTorre ? '<th>Torre</th>' : ''}<th>Apto</th><th>Descripción</th><th>Memorando</th><th class="r">Cant.</th><th class="r">Vr. unitario</th><th class="r">Total</th></tr></thead>
+<tbody>${filas.map(f => `<tr><td>${f.fecha}</td>${conTorre ? `<td>${f.torre}</td>` : ''}<td>${f.apto}</td><td>${f.descripcion}</td><td>${f.memorando}</td><td class="r">${f.cantidad}</td><td class="r">${$(f.unit)}</td><td class="r"><b>${$(f.total)}</b></td></tr>`).join('')}</tbody>
+<tr class="tot"><td colspan="${conTorre ? 7 : 6}" class="r">TOTAL ADICIONALES (${filas.length})</td><td class="r">${$(total)}</td></tr></table>
+<div class="nota"><b>Nota:</b> Valores sin IVA; el IVA se discrimina en la factura. Cada adicional está soportado por su memorando de la obra.<br>
+Santa Lucía Muebles y Pisos S.A.S. · NIT 900.602.879-5 · Tel: 311.341.04.58 · cesarbeta@gmail.com</div>
+<div class="firmas"><div class="firma">Elaboró — Santa Lucía Muebles y Pisos</div><div class="firma">Aprobó — ${constr?.nombre || 'Constructora'}</div></div>
+</div></body></html>`
+    const v = window.open('', '_blank', 'width=960,height=700')
+    if (v) { v.document.write(html); v.document.close() }
+  }
+
+  function exportarCobroExcel(lista) {
+    const filas = filasCobro(lista)
+    const conTorre = torresDe(proySel).length > 1
+    const aoa = [
+      [`Cuenta de cobro — Adicionales de obra — ${proySel.nombre}`],
+      [`Constructora: ${constructoras.find(c => c.id === proySel.constructora_id)?.nombre || ''}`, '', '', `Fecha: ${new Date().toLocaleDateString('es-CO')}`],
+      [],
+      ['Fecha', ...(conTorre ? ['Torre'] : []), 'Apto', 'Descripción', 'Memorando', 'Cantidad', 'Vr. unitario', 'Total'],
+      ...filas.map(f => [f.fecha, ...(conTorre ? [f.torre] : []), f.apto, f.descripcion, f.memorando, f.cantidad, f.unit, f.total]),
+      [],
+      ['TOTAL', ...(conTorre ? [''] : []), '', '', '', '', '', filas.reduce((s, f) => s + f.total, 0)],
+    ]
+    const hoja = XLSX.utils.aoa_to_sheet(aoa)
+    hoja['!cols'] = [{ wch: 12 }, ...(conTorre ? [{ wch: 18 }] : []), { wch: 8 }, { wch: 40 }, { wch: 12 }, { wch: 9 }, { wch: 14 }, { wch: 14 }]
+    const r = XLSX.utils.decode_range(hoja['!ref'])
+    const cUnit = conTorre ? 6 : 5, cTot = conTorre ? 7 : 6
+    for (let i = 4; i <= r.e.r; i++) for (const c of [cUnit, cTot]) {
+      const cel = hoja[XLSX.utils.encode_cell({ r: i, c })]
+      if (cel && typeof cel.v === 'number') cel.z = '"$"#,##0'
+    }
+    const libro = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(libro, hoja, 'Adicionales')
+    XLSX.writeFile(libro, `Cobro adicionales ${proySel.nombre} ${new Date().toISOString().slice(0, 10)}.xlsx`.replace(/[\\/:*?"<>|]/g, ''))
   }
 
   // ── Guardar ───────────────────────────────────────────────
@@ -296,6 +367,18 @@ export default function Adicionales({ dbData, setDbData, toast, nav, irA, puedeE
           {tabBtn('santalucia', `🪵 Asumidos Santa Lucía (${deSL.length})`)}
           {tabBtn('sin', `⚠️ Sin clasificar (${sinClas.length})`)}
         </div>
+        {tab === 'obra' && verValorContrato && (() => {
+          // Se exporta lo que está por cobrar y ya tiene memorando (lo visible, según el filtro de estado)
+          const aCobrar = lista.filter(u => !['cobrado', 'rechazado'].includes(u.estado) && u.memorando)
+          const sinM = lista.filter(u => !['cobrado', 'rechazado'].includes(u.estado) && !u.memorando).length
+          return (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginLeft: 'auto', flexWrap: 'wrap' }}>
+              {sinM > 0 && <span style={{ fontSize: 11, color: C.rd }}>{sinM} sin memorando no se incluyen</span>}
+              <Btn size="sm" disabled={!aCobrar.length} onClick={() => exportarCobroPDF(aCobrar)}>📄 Cuenta de cobro</Btn>
+              <Btn size="sm" variant="success" disabled={!aCobrar.length} onClick={() => exportarCobroExcel(aCobrar)}>📊 Excel</Btn>
+            </div>
+          )
+        })()}
         {tab === 'obra' && (
           <select value={filtEstado} onChange={e => setFiltEstado(e.target.value)}
             style={{ padding: '7px 10px', border: `1px solid ${C.g2}`, borderRadius: 8, fontSize: 13 }}>
