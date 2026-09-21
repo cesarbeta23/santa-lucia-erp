@@ -281,6 +281,17 @@ function Sidebar({ user, view, setView, onLogout }) {
 export default function App() {
   const [user, setUser] = useState(() => {
     try {
+      // Llegó desde Gestión de Obras con un pase: se guarda como sesión y se limpia la URL
+      const m = window.location.hash.match(/^#sso=(.+)$/)
+      if (m) {
+        const data = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(m[1])))))
+        if (data?.token && data?.exp && data.exp * 1000 > Date.now()) {
+          localStorage.setItem(SESION_KEY, JSON.stringify({ user: data.user, token: data.token, exp: data.exp }))
+        }
+        window.history.replaceState(null, '', window.location.pathname)
+      }
+    } catch { /* pase dañado: se sigue con el login normal */ }
+    try {
       localStorage.removeItem('sl_erp_user')   // sesión vieja (sin pase)
       const s = JSON.parse(localStorage.getItem(SESION_KEY) || 'null')
       if (!s?.token || !s?.exp || s.exp * 1000 < Date.now()) { localStorage.removeItem(SESION_KEY); return null }
@@ -289,6 +300,13 @@ export default function App() {
     } catch { return null }
   })
   const [view, setView]     = useState('dashboard')
+  const esMovil = () => typeof window !== 'undefined' && window.innerWidth < 900
+  const [menuAbierto, setMenuAbierto] = useState(() => !esMovil())
+  useEffect(() => {
+    const alCambiar = () => setMenuAbierto(!esMovil())
+    window.addEventListener('resize', alCambiar)
+    return () => window.removeEventListener('resize', alCambiar)
+  }, [])
   const [nav, setNav]       = useState(null)   // { proyectoId, contratoId, pedidoId, actaId, remisionId, desde }
   const [navKey, setNavKey] = useState(0)      // fuerza a remontar la página al navegar
   const [toasts, setToasts] = useState([])
@@ -389,6 +407,7 @@ export default function App() {
     setNav(null)
     setView(key)
     setNavKey(k => k + 1)
+    if (esMovil()) setMenuAbierto(false)
   }
 
   const shared = {
@@ -416,7 +435,16 @@ export default function App() {
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
       <Toast items={toasts} setItems={setToasts} />
-      <Sidebar user={user} view={view} setView={irMenu} onLogout={logout} />
+      {menuAbierto && (
+        <>
+          {/* fondo oscuro para cerrar el menú en el celular */}
+          {esMovil() && <div onClick={() => setMenuAbierto(false)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 40 }} />}
+          <div style={esMovil() ? { position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 50 } : {}}>
+            <Sidebar user={user} view={view} setView={irMenu} onLogout={logout} />
+          </div>
+        </>
+      )}
 
       {/* Área de contenido */}
       <main style={{
@@ -437,7 +465,12 @@ export default function App() {
             <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
           </div>
         ) : (
-          <div key={navKey} style={{ padding: '24px 28px', flex: 1 }}>
+          <div key={navKey} style={{ padding: esMovil() ? '12px 12px' : '24px 28px', flex: 1 }}>
+            {/* botón de menú (en celular siempre; en PC para ganar espacio) */}
+            <button onClick={() => setMenuAbierto(a => !a)} title="Menú"
+              style={{ position: 'sticky', top: 0, zIndex: 30, marginBottom: 10, background: C.bk, color: C.wh, border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 16, cursor: 'pointer' }}>
+              {menuAbierto && !esMovil() ? '⟨' : '☰'}
+            </button>
             {puedeIr(view) ? pages[view] : <div style={{ color: C.g4 }}>No tienes acceso a este módulo</div>}
           </div>
         )}
