@@ -346,19 +346,19 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
               <h3 style={h3}>📦 Materiales {linkMod('pedidos', 'Ver pedidos')}</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
                 <div style={{ ...card, padding: '10px 12px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 11, color: C.g4, marginBottom: 4 }}>Comprado</div>
+                  <div style={{ fontSize: 11, color: C.g4, marginBottom: 4 }}>Total pedido</div>
                   <div style={{ fontSize: 16, fontWeight: 700 }}>{verFinanzas ? fmt(valorComprado) : '—'}</div>
                   <div style={{ fontSize: 10, color: C.g4 }}>con IVA</div>
                 </div>
                 <div style={{ ...card, padding: '10px 12px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 11, color: C.g4, marginBottom: 4 }}>Ha llegado</div>
+                  <div style={{ fontSize: 11, color: C.g4, marginBottom: 4 }}>Llegado a planta</div>
                   <div style={{ fontSize: 16, fontWeight: 700, color: C.gnD }}>{verFinanzas ? fmt(valorRecibido) : '—'}</div>
-                  <div style={{ fontSize: 10, color: C.g4 }}>a la obra</div>
+                  <div style={{ fontSize: 10, color: C.g4 }}>recibido</div>
                 </div>
                 <div style={{ ...card, padding: '10px 12px', textAlign: 'center' }}>
                   <div style={{ fontSize: 11, color: C.g4, marginBottom: 4 }}>% llegado</div>
                   <div style={{ fontSize: 22, fontWeight: 800, color: pctPed >= 100 ? C.gnD : C.am }}>{Math.round(pctPed)}%</div>
-                  <div style={{ fontSize: 10, color: C.g4 }}>del valor comprado</div>
+                  <div style={{ fontSize: 10, color: C.g4 }}>del total pedido</div>
                 </div>
               </div>
               <Progress value={pctPed} />
@@ -385,7 +385,7 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
                       </div>
                       <Progress value={pct2} />
                       <div style={{ fontSize: 11, color: C.g5, marginTop: 4 }}>
-                        {Math.round(pct2)}% llegado{verFinanzas ? ` · ${fmt(rec2 * 1.19)} de ${fmt(val2 * 1.19)}` : ''}
+                        {Math.round(pct2)}% llegado a planta{verFinanzas ? ` · ${fmt(rec2 * 1.19)} de ${fmt(val2 * 1.19)}` : ''}
                       </div>
                     </div>
                   )
