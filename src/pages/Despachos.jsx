@@ -525,8 +525,8 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                         <thead>
                           <tr style={{ background: C.g0 }}>
-                            {['Remisión','Fecha','Transportador','Ítems','Und. total','Control','Acciones'].map((h,i) => (
-                              <th key={i} style={{ padding: '9px 12px', textAlign: i > 2 ? 'center' : 'left', fontSize: 11, fontWeight: 700, color: C.g5, textTransform: 'uppercase', letterSpacing: '.06em', borderBottom: `2px solid ${C.g2}`, whiteSpace: 'nowrap' }}>{h}</th>
+                            {['Remisión','Fecha','Lote','Transportador','Ítems','Und. total','Control','Acciones'].map((h,i) => (
+                              <th key={i} style={{ padding: '9px 12px', textAlign: i > 3 ? 'center' : 'left', fontSize: 11, fontWeight: 700, color: C.g5, textTransform: 'uppercase', letterSpacing: '.06em', borderBottom: `2px solid ${C.g2}`, whiteSpace: 'nowrap' }}>{h}</th>
                             ))}
                           </tr>
                         </thead>
@@ -582,7 +582,7 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
                                 {/* Acordeón — detalle de la remisión */}
                                 {abierta && (
                                   <tr key={rem.id + '-det'} style={{ borderBottom: `1px solid ${C.g2}` }}>
-                                    <td colSpan={7} style={{ padding: '0 0 16px 32px', background: '#F0F7FF' }}>
+                                    <td colSpan={8} style={{ padding: '0 0 16px 32px', background: '#F0F7FF' }}>
                                       <div style={{ display: 'grid', gridTemplateColumns: itsCtrl.length ? '1fr 1fr' : '1fr', gap: 16, paddingTop: 12 }}>
 
                                         {/* Ítems del contrato */}
