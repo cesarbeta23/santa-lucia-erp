@@ -532,9 +532,9 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
         <div style={{ ...card, padding: 0, overflow: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
-              <tr style={{ background: '#1E3A5F' }}>
+              <tr style={{ background: '#2B313A' }}>
                 {['REF', 'DESCRIPCIÓN', 'UM', 'CONTRATADO', 'EN OBRA', 'INSTALADO', 'FACTURADO', 'FALTA INSTALAR', 'POR FACTURAR'].map((h, i) => (
-                  <th key={h} style={{ padding: '9px 10px', textAlign: i < 3 ? 'left' : 'right', color: i < 3 ? '#BFDBFE' : '#93C5FD', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>{h}</th>
+                  <th key={h} style={{ padding: '9px 10px', textAlign: i < 3 ? 'left' : 'right', color: i < 3 ? '#F3D3B5' : '#FCC89B', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -583,7 +583,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
               })}
             </tbody>
             <tfoot>
-              <tr style={{ background: '#1E3A5F', fontSize: 12, fontWeight: 700 }}>
+              <tr style={{ background: '#2B313A', fontSize: 12, fontWeight: 700 }}>
                 <td colSpan={3} style={{ padding: '9px 10px', color: 'white' }}>TOTALES</td>
                 {(() => {
                   const c = its.reduce((s, i) => s + (contratadoDe(i) ?? 0), 0)
@@ -595,7 +595,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                     {cel(c, 'white')}
                     {cel(p, '#FDE68A')}
                     {cel(i2, '#86EFAC')}
-                    {cel(f, '#BFDBFE')}
+                    {cel(f, '#F3D3B5')}
                     {cel(c - i2, '#FDBA74')}
                     {cel(Math.max(0, i2 - f), '#FDBA74')}
                   </>
@@ -619,10 +619,10 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
             <div style={{ ...card, padding: 0, overflow: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
-                  <tr style={{ background: '#1E3A5F' }}>
-                    <th style={{ padding: '9px 10px', textAlign: 'left', color: '#BFDBFE', fontSize: 10, fontWeight: 700 }}>APTO</th>
+                  <tr style={{ background: '#2B313A' }}>
+                    <th style={{ padding: '9px 10px', textAlign: 'left', color: '#F3D3B5', fontSize: 10, fontWeight: 700 }}>APTO</th>
                     {its.map(it => [
-                      <th key={it.id} style={{ padding: '9px 8px', textAlign: 'center', color: '#93C5FD', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap', borderLeft: '2px solid #2D5A8E' }}>{it.ref}</th>,
+                      <th key={it.id} style={{ padding: '9px 8px', textAlign: 'center', color: '#FCC89B', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap', borderLeft: '2px solid #3A414B' }}>{it.ref}</th>,
                       <th key={it.id + 'e'} style={{ padding: '9px 8px', textAlign: 'center', color: '#FDBA74', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>ENTREGA {it.ref}</th>,
                     ])}
                   </tr>
@@ -669,7 +669,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                   ))}
                 </tbody>
                 <tfoot>
-                  <tr style={{ background: '#1E3A5F', fontWeight: 700 }}>
+                  <tr style={{ background: '#2B313A', fontWeight: 700 }}>
                     <td style={{ padding: '8px 10px', color: 'white', fontSize: 11 }}>INSTALADO</td>
                     {its.map(it => {
                       const tot = aptos.reduce((s, a) => s + instaladoEnApto(a, it.id), 0)
@@ -680,14 +680,14 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                       ]
                     })}
                   </tr>
-                  <tr style={{ background: '#1E293B', fontWeight: 600 }}>
+                  <tr style={{ background: '#23272E', fontWeight: 600 }}>
                     <td style={{ padding: '6px 10px', color: '#CBD5E1', fontSize: 11 }}>CONTRATADO</td>
                     {its.map(it => [
                       <td key={it.id} style={{ padding: '6px 8px', textAlign: 'center', color: '#CBD5E1' }}>{contratadoDe(it) === null ? '—' : contratadoDe(it).toLocaleString('es-CO')}</td>,
                       <td key={it.id + 'e'} />,
                     ])}
                   </tr>
-                  <tr style={{ background: '#1E293B', fontWeight: 600 }}>
+                  <tr style={{ background: '#23272E', fontWeight: 600 }}>
                     <td style={{ padding: '6px 10px', color: '#CBD5E1', fontSize: 11 }}>FALTA</td>
                     {its.map(it => {
                       const falta = (contratadoDe(it) ?? 0) - aptos.reduce((s, a) => s + instaladoEnApto(a, it.id), 0)
@@ -822,8 +822,8 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
             const conPartes = its.filter(i => i.id !== partesItem.id && partesDe(i.id).length > 0)
             if (!conPartes.length) return null
             return (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '10px 12px', background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#1E3A5F' }}>⧉ Igual que:</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '10px 12px', background: '#EFF6FF', border: '1px solid #F3D3B5', borderRadius: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#2B313A' }}>⧉ Igual que:</span>
                 <select defaultValue="" onChange={e => { if (e.target.value) { copiarDesglose(e.target.value); e.target.value = '' } }}
                   style={{ padding: '6px 10px', border: `1px solid ${C.g2}`, borderRadius: 8, fontSize: 13, flex: 1, minWidth: 200 }}>
                   <option value="">— Copiar el desglose de otro ítem —</option>

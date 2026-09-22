@@ -138,20 +138,9 @@ function Login({ onLogin }) {
         border: `1px solid ${C.g8}`,
       }}>
         {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{
-            width: 64, height: 64, background: C.bk, borderRadius: 18,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            margin: '0 auto 16px', border: `2px solid ${C.or}`,
-          }}>
-            <span style={{ fontSize: 28 }}>🪵</span>
-          </div>
-          <div style={{ fontWeight: 800, fontSize: 20, color: C.bk, letterSpacing: '-.02em' }}>
-            Santa Lucía
-          </div>
-          <div style={{ fontSize: 13, color: C.g5, marginTop: 4 }}>
-            Sistema de Información
-          </div>
+        <div style={{ textAlign: 'center', marginBottom: 30 }}>
+          <img src="/logo.jpg" alt="Santa Lucía Muebles y Pisos" style={{ height: 96, margin: '0 auto 14px', display: 'block' }} />
+          <div style={{ fontSize: 13, color: C.g5 }}>Sistema de información</div>
         </div>
 
         <Inp
@@ -204,23 +193,25 @@ function Sidebar({ user, view, setView, onLogout, onIrGestion }) {
 
   return (
     <div style={{
-      width: 220, background: C.bk, display: 'flex',
+      width: 220, background: `linear-gradient(180deg, ${C.g8} 0%, ${C.g9} 100%)`, display: 'flex',
       flexDirection: 'column', height: '100vh',
       borderRight: `1px solid ${C.g8}`, flexShrink: 0,
     }}>
       {/* Logo sidebar */}
       <div style={{
-        padding: '18px 16px 14px', borderBottom: `1px solid ${C.g8}`,
-        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '16px 16px 14px', borderBottom: `1px solid ${C.g8}`,
+        display: 'flex', alignItems: 'center', gap: 11,
       }}>
         <div style={{
-          width: 34, height: 34, background: C.g8, borderRadius: 10,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          border: `1px solid ${C.or}`, fontSize: 16, flexShrink: 0,
-        }}>🪵</div>
+          width: 38, height: 38, background: C.wh, borderRadius: 10, overflow: 'hidden',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          boxShadow: `0 0 0 1px ${C.g7}`,
+        }}>
+          <img src="/logo.jpg" alt="Santa Lucía" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }} />
+        </div>
         <div>
-          <div style={{ fontWeight: 700, fontSize: 14, color: C.wh }}>Santa Lucía</div>
-          <div style={{ fontSize: 11, color: C.g5 }}>Muebles y Pisos</div>
+          <div style={{ fontWeight: 700, fontSize: 14, color: C.wh, letterSpacing: '-.01em' }}>Santa Lucía</div>
+          <div style={{ fontSize: 11, color: C.g4 }}>Muebles y pisos</div>
         </div>
       </div>
 
@@ -239,9 +230,9 @@ function Sidebar({ user, view, setView, onLogout, onIrGestion }) {
                 <button key={item.key} onClick={() => setView(item.key)} style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   width: '100%', padding: '8px 10px', borderRadius: 8,
-                  background: active ? C.g8 : 'transparent',
+                  background: active ? 'rgba(249,115,22,.14)' : 'transparent',
                   border: 'none', color: active ? C.wh : C.g4,
-                  fontSize: 13, fontWeight: active ? 600 : 400,
+                  fontSize: 13, fontWeight: active ? 650 : 400,
                   cursor: 'pointer', textAlign: 'left',
                   transition: 'all .12s', marginBottom: 2,
                   borderLeft: active ? `3px solid ${C.or}` : '3px solid transparent',
@@ -497,7 +488,7 @@ export default function App() {
           <div key={navKey} style={{ padding: esMovil() ? '12px 12px' : '24px 28px', flex: 1 }}>
             {/* botón de menú (en celular siempre; en PC para ganar espacio) */}
             <button onClick={() => setMenuAbierto(a => !a)} title="Menú"
-              style={{ position: 'sticky', top: 0, zIndex: 30, marginBottom: 10, background: C.bk, color: C.wh, border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 16, cursor: 'pointer' }}>
+              style={{ position: 'sticky', top: 0, zIndex: 30, marginBottom: 10, background: C.wh, color: C.bk, border: `1px solid ${C.g3}`, borderRadius: 9, padding: '6px 12px', fontSize: 16, cursor: 'pointer', boxShadow: '0 1px 2px rgba(35,39,46,.06)' }}>
               {menuAbierto && !esMovil() ? '⟨' : '☰'}
             </button>
             {puedeIr(view) ? pages[view] : <div style={{ color: C.g4 }}>No tienes acceso a este módulo</div>}

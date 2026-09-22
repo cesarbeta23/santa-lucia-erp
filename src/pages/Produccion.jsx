@@ -383,22 +383,22 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
             <div style={{ ...card, padding: 0, overflow: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 600 }}>
                 <thead>
-                  <tr style={{ background: '#1E3A5F' }}>
-                    <th style={{ padding: '9px 12px', textAlign: 'left', color: 'white', fontSize: 10, fontWeight: 700, position: 'sticky', left: 0, background: '#1E3A5F', zIndex: 1 }}>REF</th>
+                  <tr style={{ background: '#2B313A' }}>
+                    <th style={{ padding: '9px 12px', textAlign: 'left', color: 'white', fontSize: 10, fontWeight: 700, position: 'sticky', left: 0, background: '#2B313A', zIndex: 1 }}>REF</th>
                     <th style={{ padding: '9px 12px', textAlign: 'left', color: 'white', fontSize: 10, fontWeight: 700 }}>DESCRIPCIÓN</th>
                     <th style={{ padding: '9px 12px', textAlign: 'center', color: 'white', fontSize: 10, fontWeight: 700 }}>UM</th>
                     <th style={{ padding: '9px 12px', textAlign: 'right', color: 'white', fontSize: 10, fontWeight: 700 }}>CONTRATO</th>
                     {lotes.map(l => (
-                      <th key={l.id} style={{ padding: '9px 10px', textAlign: 'center', color: 'white', fontSize: 10, fontWeight: 700, minWidth: 90, borderLeft: '1px solid #2D5A8E' }}>
+                      <th key={l.id} style={{ padding: '9px 10px', textAlign: 'center', color: 'white', fontSize: 10, fontWeight: 700, minWidth: 90, borderLeft: '1px solid #3A414B' }}>
                         {l.nombre}
-                        <div style={{ fontSize: 9, color: '#93C5FD', fontWeight: 400 }}>
+                        <div style={{ fontSize: 9, color: '#FCC89B', fontWeight: 400 }}>
                           <Badge color={ESTADOS_LOTE[estadoLote(l)]?.color || 'gray'} >{ESTADOS_LOTE[estadoLote(l)]?.label}</Badge>
                         </div>
                       </th>
                     ))}
-                    <th style={{ padding: '9px 10px', textAlign: 'right', color: '#93C5FD', fontSize: 10, fontWeight: 700, borderLeft: '1px solid #2D5A8E' }}>TOTAL PLAN</th>
-                    <th style={{ padding: '9px 10px', textAlign: 'right', color: '#93C5FD', fontSize: 10, fontWeight: 700 }}>DIFERENCIA</th>
-                    <th style={{ padding: '9px 10px', textAlign: 'right', color: '#86EFAC', fontSize: 10, fontWeight: 700, borderLeft: '2px solid #2D5A8E' }}>DESPACHADO</th>
+                    <th style={{ padding: '9px 10px', textAlign: 'right', color: '#FCC89B', fontSize: 10, fontWeight: 700, borderLeft: '1px solid #3A414B' }}>TOTAL PLAN</th>
+                    <th style={{ padding: '9px 10px', textAlign: 'right', color: '#FCC89B', fontSize: 10, fontWeight: 700 }}>DIFERENCIA</th>
+                    <th style={{ padding: '9px 10px', textAlign: 'right', color: '#86EFAC', fontSize: 10, fontWeight: 700, borderLeft: '2px solid #3A414B' }}>DESPACHADO</th>
                     <th style={{ padding: '9px 10px', textAlign: 'right', color: '#FDBA74', fontSize: 10, fontWeight: 700 }}>FALTA DESPACHAR</th>
                   </tr>
                 </thead>
@@ -473,17 +473,17 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
                   })}
                 </tbody>
                 <tfoot>
-                  <tr style={{ background: '#1E3A5F', borderTop: `2px solid ${C.g2}` }}>
+                  <tr style={{ background: '#2B313A', borderTop: `2px solid ${C.g2}` }}>
                     <td colSpan={3} style={{ padding: '9px 12px', color: 'white', fontWeight: 700, fontSize: 11 }}>TOTAL</td>
                     <td style={{ padding: '9px 12px', textAlign: 'right', color: 'white', fontWeight: 700 }}>
                       {itsContr.reduce((s, it) => s + (contratadoDe(it) ?? 0), 0).toLocaleString('es-CO')}
                     </td>
                     {lotes.map(l => (
-                      <td key={l.id} style={{ padding: '9px 10px', textAlign: 'center', color: 'white', fontWeight: 700, borderLeft: '1px solid #2D5A8E' }}>
+                      <td key={l.id} style={{ padding: '9px 10px', textAlign: 'center', color: 'white', fontWeight: 700, borderLeft: '1px solid #3A414B' }}>
                         {items_lote.filter(i => i.lote_id === l.id).reduce((s,i) => s+Number(i.cantidad||0), 0).toLocaleString('es-CO')}
                       </td>
                     ))}
-                    <td colSpan={2} style={{ padding: '9px 10px', color: 'white', textAlign: 'right', borderLeft: '1px solid #2D5A8E' }}>
+                    <td colSpan={2} style={{ padding: '9px 10px', color: 'white', textAlign: 'right', borderLeft: '1px solid #3A414B' }}>
                       {items_lote.filter(i => lotes.some(l => l.id === i.lote_id)).reduce((s,i) => s+Number(i.cantidad||0), 0).toLocaleString('es-CO')}
                     </td>
                     {(() => {
@@ -491,7 +491,7 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
                       const totD = itsContr.reduce((s, it) => s + cantDespTotal(it.id), 0)
                       const totF = totC - totD
                       return <>
-                        <td style={{ padding: '9px 10px', textAlign: 'right', color: '#86EFAC', fontWeight: 700, borderLeft: '2px solid #2D5A8E' }}>
+                        <td style={{ padding: '9px 10px', textAlign: 'right', color: '#86EFAC', fontWeight: 700, borderLeft: '2px solid #3A414B' }}>
                           {totD.toLocaleString('es-CO')}
                         </td>
                         <td style={{ padding: '9px 10px', textAlign: 'right', color: totF === 0 ? '#86EFAC' : '#FDBA74', fontWeight: 700 }}>
@@ -545,7 +545,7 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
                 </table>
               </div>
               {sigs.length > 0 ? (
-                <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#1E3A5F', marginBottom: 16 }}>
+                <div style={{ background: '#EFF6FF', border: '1px solid #F3D3B5', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#2B313A', marginBottom: 16 }}>
                   {soloAjuste
                     ? <>Los excesos se descuentan de <strong>{sigs[0].nombre}</strong> y, si no alcanza, de los lotes que siguen.</>
                     : <>Si pasas el saldo: este lote queda con lo que realmente se despachó, lo que faltó se suma a <strong>{sigs[0].nombre}</strong> y los excesos se descuentan de los lotes siguientes.</>}
@@ -685,7 +685,7 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
                 const lotesP    = lotes_produccion.filter(l => l.proyecto_id === p.id)
                 const pctProm   = lotesP.length > 0 ? lotesP.reduce((s,l) => s+pctLote(l.id),0)/lotesP.length : 0
                 return (
-                  <div key={p.id} style={{ ...card, cursor: 'pointer', borderLeft: `4px solid #1E3A5F` }}
+                  <div key={p.id} style={{ ...card, cursor: 'pointer', borderLeft: `4px solid #2B313A` }}
                     onMouseEnter={e => e.currentTarget.style.boxShadow='0 4px 20px rgba(0,0,0,.1)'}
                     onMouseLeave={e => e.currentTarget.style.boxShadow='0 1px 4px rgba(0,0,0,.06)'}
                     onClick={() => { setProySel(p); setVista('proyecto') }}

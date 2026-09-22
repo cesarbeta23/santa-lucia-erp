@@ -132,8 +132,8 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
   /* CABECERA */
   .header { background: #1F3A5F; color: white; padding: 18px 24px; border-radius: 8px 8px 0 0; }
   .header h1 { font-size: 18px; font-weight: 800; letter-spacing: -.02em; margin-bottom: 2px; }
-  .header p  { font-size: 11px; color: #93C5FD; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
-  .subheader { background: #1E293B; padding: 10px 24px; border-radius: 0 0 8px 8px; margin-bottom: 20px;
+  .header p  { font-size: 11px; color: #FCC89B; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+  .subheader { background: #23272E; padding: 10px 24px; border-radius: 0 0 8px 8px; margin-bottom: 20px;
                display: flex; gap: 32px; flex-wrap: wrap; }
   .subheader .info-item { display: flex; flex-direction: column; }
   .subheader .info-label { font-size: 9px; color: #64748B; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 2px; }
@@ -141,9 +141,9 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
 
   /* TABLA */
   table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
-  thead tr { background: #1E3A5F; }
+  thead tr { background: #2B313A; }
   thead th { padding: 9px 10px; color: white; font-size: 9px; font-weight: 700;
-             text-transform: uppercase; letter-spacing: .06em; text-align: right; border: 1px solid #2D5A8E; }
+             text-transform: uppercase; letter-spacing: .06em; text-align: right; border: 1px solid #3A414B; }
   thead th:nth-child(1) { text-align: center; width: 80px; }
   thead th:nth-child(2) { text-align: left; }
   thead th:nth-child(3) { text-align: center; width: 50px; }
@@ -157,15 +157,15 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
   tbody td:nth-child(8) { font-weight: 700; color: #1D4ED8; }
 
   /* TOTALES */
-  .total-row { background: #1E3A5F !important; }
+  .total-row { background: #2B313A !important; }
   .total-row td { color: white !important; font-weight: 700 !important; font-size: 11px !important;
-                  padding: 11px 10px !important; border-color: #2D5A8E !important; }
+                  padding: 11px 10px !important; border-color: #3A414B !important; }
   .total-row .grand { background: #1D4ED8; font-size: 13px !important; }
 
   /* NOTA */
   .nota { margin-top: 16px; padding: 12px 16px; background: #F1F5F9;
-          border-left: 3px solid #1E3A5F; border-radius: 4px; font-size: 9px; color: #64748B; line-height: 1.6; }
-  .nota strong { color: #1E3A5F; }
+          border-left: 3px solid #2B313A; border-radius: 4px; font-size: 9px; color: #64748B; line-height: 1.6; }
+  .nota strong { color: #2B313A; }
 
   /* FOOTER */
   .footer { margin-top: 20px; text-align: center; font-size: 9px; color: #94A3B8; padding-top: 12px;
@@ -182,7 +182,7 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
 <div class="page">
   <!-- Botón imprimir (solo en pantalla) -->
   <div class="no-print" style="text-align:right; margin-bottom:16px;">
-    <button onclick="window.print()" style="background:#1E3A5F;color:white;border:none;padding:10px 24px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">
+    <button onclick="window.print()" style="background:#2B313A;color:white;border:none;padding:10px 24px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">
       🖨️ Guardar / Imprimir PDF
     </button>
   </div>
@@ -587,12 +587,12 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
 
                                         {/* Ítems del contrato */}
                                         <div>
-                                          <div style={{ fontSize: 11, fontWeight: 700, color: '#1E3A5F', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
+                                          <div style={{ fontSize: 11, fontWeight: 700, color: '#2B313A', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
                                             📦 Ítems despachados
                                           </div>
                                           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                                             <thead>
-                                              <tr style={{ background: '#1E3A5F' }}>
+                                              <tr style={{ background: '#2B313A' }}>
                                                 <th style={{ padding: '6px 10px', textAlign: 'left', color: 'white', fontSize: 10, fontWeight: 700 }}>Ref</th>
                                                 <th style={{ padding: '6px 10px', textAlign: 'left', color: 'white', fontSize: 10, fontWeight: 700 }}>Descripción</th>
                                                 <th style={{ padding: '6px 10px', textAlign: 'center', color: 'white', fontSize: 10, fontWeight: 700 }}>UM</th>
@@ -611,7 +611,7 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
                                                   </tr>
                                                 )
                                               })}
-                                              <tr style={{ background: '#1E3A5F' }}>
+                                              <tr style={{ background: '#2B313A' }}>
                                                 <td colSpan={3} style={{ padding: '7px 10px', color: 'white', fontWeight: 700, fontSize: 11, textAlign: 'right' }}>TOTAL</td>
                                                 <td style={{ padding: '7px 10px', color: 'white', fontWeight: 800, textAlign: 'right', fontSize: 13 }}>{totalRem.toLocaleString('es-CO')}</td>
                                               </tr>

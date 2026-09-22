@@ -814,7 +814,7 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
                     <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: C.rd }}>{fmt(p.ret)}</td>
                   </tr>,
                 ])}
-                <tr style={{ background: '#1E3A5F' }}>
+                <tr style={{ background: '#2B313A' }}>
                   <td colSpan={3} style={{ padding: '8px 10px', color: 'white', fontWeight: 700 }}>TOTAL RETENIDO EN LA OBRA</td>
                   <td style={{ padding: '8px 10px', textAlign: 'right', color: 'white', fontWeight: 700 }}>{fmt(retDet.retenidos.reduce((x, p) => x + p.causado, 0))}</td>
                   <td style={{ padding: '8px 10px', textAlign: 'right', color: '#FCA5A5', fontWeight: 800 }}>{fmt(retDet.retTot)}</td>

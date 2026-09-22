@@ -2,10 +2,12 @@ import { useEffect } from 'react'
 
 // ── Colores ────────────────────────────────────────────────
 export const C = {
-  or: '#F97316', orD: '#EA6A0A', orL: '#FFF7ED', orM: '#FED7AA',
-  bk: '#111', g9: '#1C1C1E', g8: '#2C2C2E', g7: '#3A3A3C',
-  g5: '#636366', g4: '#8E8E93', g3: '#C7C7CC', g2: '#D1D1D6',
-  g1: '#F2F2F7', g0: '#F9F9FB', wh: '#FFFFFF',
+  // Naranja de la marca
+  or: '#F97316', orD: '#C2410C', orL: '#FFF4EA', orM: '#FCC89B',
+  // Grafito en vez de negro puro, con una escala de grises más neutra
+  bk: '#23272E', g9: '#1B1F25', g8: '#2B313A', g7: '#3A414B',
+  g5: '#616B78', g4: '#98A1AE', g3: '#C6CCD5', g2: '#E1E5EA',
+  g1: '#F1F3F6', g0: '#F6F7F9', wh: '#FFFFFF',
   gn: '#22C55E', gnL: '#DCFCE7', gnD: '#15803D',
   rd: '#EF4444', rdL: '#FEE2E2',
   am: '#F59E0B', amL: '#FEF3C7',
@@ -15,8 +17,8 @@ export const C = {
 // ── Estilos base ───────────────────────────────────────────
 export const card = {
   background: C.wh, border: `1px solid ${C.g2}`,
-  borderRadius: 12, padding: '1rem 1.25rem',
-  boxShadow: '0 1px 4px rgba(0,0,0,.06)',
+  borderRadius: 14, padding: '1rem 1.25rem',
+  boxShadow: '0 1px 2px rgba(35,39,46,.04), 0 6px 16px -12px rgba(35,39,46,.18)',
 }
 
 export const iSt = {
@@ -26,12 +28,13 @@ export const iSt = {
   color: C.bk, background: C.wh,
 }
 
+// Cada variante lleva el borde del color de la acción
 const bV = {
-  primary: { background: C.or, border: `1px solid ${C.or}`, color: C.wh },
-  default: { background: C.wh, border: `1px solid ${C.g2}`, color: C.bk },
-  danger:  { background: C.rdL, border: '1px solid #FECACA', color: C.rd },
-  success: { background: C.gnL, border: '1px solid #BBF7D0', color: C.gnD },
-  amber:   { background: C.amL, border: '1px solid #FDE68A', color: '#B45309' },
+  primary: { background: C.or, border: `1px solid ${C.orD}`, color: C.wh, boxShadow: '0 1px 2px rgba(194,65,12,.25)' },
+  default: { background: C.wh, border: `1px solid ${C.g3}`, color: C.bk, boxShadow: '0 1px 2px rgba(35,39,46,.05)' },
+  danger:  { background: C.rdL, border: '1px solid #F5A8A8', color: '#B91C1C' },
+  success: { background: C.gnL, border: '1px solid #8FE0AE', color: C.gnD },
+  amber:   { background: C.amL, border: '1px solid #F2CE73', color: '#B45309' },
   ghost:   { background: 'transparent', border: `1px solid ${C.g7}`, color: C.g3 },
 }
 
@@ -41,12 +44,12 @@ export function Btn({ children, onClick, variant = 'default', disabled, size = '
   const pad = size === 'sm' ? '5px 12px' : size === 'lg' ? '12px 24px' : '8px 16px'
   const fs  = size === 'sm' ? 12 : size === 'lg' ? 15 : 14
   return (
-    <button onClick={onClick} disabled={disabled} style={{
-      ...v, borderRadius: 8, padding: pad, fontSize: fs,
-      fontWeight: 500, opacity: disabled ? 0.45 : 1,
+    <button onClick={onClick} disabled={disabled} className="sl-btn" style={{
+      ...v, borderRadius: 9, padding: pad, fontSize: fs,
+      fontWeight: 600, letterSpacing: '-.01em', opacity: disabled ? 0.45 : 1,
       cursor: disabled ? 'not-allowed' : 'pointer',
       display: 'inline-flex', alignItems: 'center', gap: 6,
-      fontFamily: 'inherit', transition: 'opacity .1s', ...s,
+      fontFamily: 'inherit', ...s,
     }}>
       {children}
     </button>

@@ -141,16 +141,16 @@ export default function Adicionales({ dbData, setDbData, toast, nav, irA, puedeE
     const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Cobro adicionales ${proySel.nombre}</title>
 <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1a1a2e}.page{padding:28px 32px}
 .header{background:#1F3A5F;color:white;padding:18px 24px;border-radius:8px 8px 0 0}.header h1{font-size:18px;font-weight:800;margin-bottom:2px}
-.header p{font-size:11px;color:#93C5FD;font-weight:600;text-transform:uppercase;letter-spacing:.06em}
-.sub{background:#1E293B;padding:10px 24px;border-radius:0 0 8px 8px;margin-bottom:20px;display:flex;gap:32px;flex-wrap:wrap}
+.header p{font-size:11px;color:#FCC89B;font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.sub{background:#23272E;padding:10px 24px;border-radius:0 0 8px 8px;margin-bottom:20px;display:flex;gap:32px;flex-wrap:wrap}
 .l{font-size:9px;color:#64748B;text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px}.v{font-size:12px;color:white;font-weight:700}
-table{width:100%;border-collapse:collapse}thead th{background:#1E3A5F;padding:9px 10px;color:white;font-size:9px;font-weight:700;text-transform:uppercase;border:1px solid #2D5A8E;text-align:left}
+table{width:100%;border-collapse:collapse}thead th{background:#2B313A;padding:9px 10px;color:white;font-size:9px;font-weight:700;text-transform:uppercase;border:1px solid #3A414B;text-align:left}
 tbody td{padding:8px 10px;border:1px solid #E2E8F0;font-size:10px}tbody tr:nth-child(even){background:#F8FAFC}.r{text-align:right}
-.tot td{background:#1E3A5F;color:white;font-weight:700;font-size:12px;padding:11px 10px}
-.nota{margin-top:16px;padding:12px 16px;background:#F1F5F9;border-left:3px solid #1E3A5F;border-radius:4px;font-size:9px;color:#64748B;line-height:1.6}
+.tot td{background:#2B313A;color:white;font-weight:700;font-size:12px;padding:11px 10px}
+.nota{margin-top:16px;padding:12px 16px;background:#F1F5F9;border-left:3px solid #2B313A;border-radius:4px;font-size:9px;color:#64748B;line-height:1.6}
 .firmas{display:flex;gap:40px;margin-top:48px}.firma{flex:1;border-top:1px solid #94A3B8;padding-top:6px;font-size:10px;color:#475569;text-align:center}
 @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.np{display:none}}</style></head><body><div class="page">
-<div class="np" style="text-align:right;margin-bottom:16px"><button onclick="window.print()" style="background:#1E3A5F;color:white;border:none;padding:10px 24px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer">🖨️ Guardar / Imprimir PDF</button></div>
+<div class="np" style="text-align:right;margin-bottom:16px"><button onclick="window.print()" style="background:#2B313A;color:white;border:none;padding:10px 24px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer">🖨️ Guardar / Imprimir PDF</button></div>
 <div class="header"><h1>🪵 Santa Lucía Muebles y Pisos S.A.S.</h1><p>Cuenta de cobro — Adicionales de obra</p></div>
 <div class="sub">
 <div><div class="l">Constructora</div><div class="v">${constr?.nombre || '—'}</div></div>
@@ -397,12 +397,12 @@ Santa Lucía Muebles y Pisos S.A.S. · NIT 900.602.879-5 · Tel: 311.341.04.58 �
         <div style={{ ...card, padding: 0, overflow: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
-              <tr style={{ background: '#1E3A5F' }}>
+              <tr style={{ background: '#2B313A' }}>
                 {['FECHA', 'UBICACIÓN', 'DESCRIPCIÓN', 'INSTALADOR', 'CANT.',
                   ...(verValorContrato ? ['PAGADO'] : []),
                   ...(tab === 'obra' ? ['MEMO', ...(verValorContrato ? ['COBRO'] : []), 'ESTADO', 'ACTA / FACTURA'] : []),
                   ...(tab === 'sin' ? ['CLASIFICAR'] : []), ''].map((h, i) => (
-                  <th key={h + i} style={{ padding: '8px 10px', textAlign: ['CANT.', 'PAGADO', 'COBRO'].includes(h) ? 'right' : 'left', color: '#BFDBFE', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>{h}</th>
+                  <th key={h + i} style={{ padding: '8px 10px', textAlign: ['CANT.', 'PAGADO', 'COBRO'].includes(h) ? 'right' : 'left', color: '#F3D3B5', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>
