@@ -1,5 +1,6 @@
 import { callClaudeStream } from '../lib/api.js'
 import * as XLSX from 'xlsx'
+import { totalesContrato, etiquetaIva, MODOS_UTILIDAD } from '../lib/impuestos.js'
 import { useState, useRef, useEffect } from 'react'
 import { C, Btn, Inp, Sel, Txt, Modal, Badge, Empty, SectionHeader, card, fmt, fmtDate, Progress } from '../components/UI.jsx'
 import { supabase } from '../lib/supabase.js'
@@ -7,7 +8,8 @@ import { supabase } from '../lib/supabase.js'
 const emptyContrato = {
   proyecto_id: '', numero: '', tipo: 'suministro',
   valor_total: '', fecha_inicio: '', fecha_fin: '',
-  iva_incluido: true, factor_iva: 1.19, estado: 'vigente', notas: ''
+  iva_incluido: true, factor_iva: 1.19, estado: 'vigente', notas: '',
+  pct_utilidad: 10, modo_utilidad: 'iva_sobre_utilidad',
 }
 
 const TIPOS = {
@@ -155,6 +157,8 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
       ...form,
       valor_total: Number(String(form.valor_total).replace(/[^0-9.]/g, '')) || 0,
       factor_iva: form.tipo === 'instalacion' ? 1.019 : 1.19,
+      pct_utilidad: form.pct_utilidad === '' || form.pct_utilidad === null || form.pct_utilidad === undefined ? 10 : Number(form.pct_utilidad),
+      modo_utilidad: form.modo_utilidad || 'iva_sobre_utilidad',
     }
     try {
       if (editId) {
@@ -447,10 +451,20 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
                 <input type="checkbox" checked={form.iva_incluido} onChange={e => setForm(f => ({ ...f, iva_incluido: e.target.checked }))} />
                 IVA incluido en el precio unitario
                 <span style={{ fontSize: 12, color: C.g4 }}>
-                  {form.tipo === 'instalacion' ? '(instalación: IVA 1.9% = 19% sobre utilidad 10%)' : '(suministro: IVA 19%)'}
+                  {form.tipo === 'instalacion' ? '(instalación: IVA 19% sobre la utilidad)' : '(suministro: IVA 19%)'}
                 </span>
               </label>
             </div>
+            {form.tipo === 'instalacion' && <>
+              <Sel label="Cómo maneja la utilidad esta constructora" value={form.modo_utilidad || 'iva_sobre_utilidad'}
+                onChange={e => setForm(f => ({ ...f, modo_utilidad: e.target.value }))}>
+                {Object.entries(MODOS_UTILIDAD).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </Sel>
+              <Inp label="% de utilidad" type="number" step="0.01" min="0" value={form.pct_utilidad ?? 10}
+                onChange={e => setForm(f => ({ ...f, pct_utilidad: e.target.value }))}
+                hint={(() => { const t = totalesContrato(100000000, { ...form, tipo: 'instalacion' });
+                  return `Ej. sobre $100.000.000: utilidad ${fmt(t.utilidad)} · IVA ${fmt(t.iva)} · total ${fmt(t.total)}` })()} />
+            </>}
             <div style={{ gridColumn: '1/-1' }}>
               <Txt label="Notas" value={form.notas||''} onChange={e => setForm(f => ({ ...f, notas: e.target.value }))} />
             </div>
@@ -474,12 +488,11 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
     // Para instalación: IVA = subtotal × 10% × 19% = subtotal × 0.019
     // Para suministro:  IVA = subtotal × 19%
     // Si iva_incluido: el precio ya tiene IVA dentro, extraerlo
-    const ivaItems = contratoSel.iva_incluido
-      ? totalItems * (1 - 1/factorIva)
-      : contratoSel.tipo === 'instalacion'
-        ? totalItems * 0.10 * 0.19
-        : totalItems * 0.19
-    const totalConIva = contratoSel.iva_incluido ? totalItems : totalItems + ivaItems
+    const tot = totalesContrato(totalItems, contratoSel)
+    const ivaItems = contratoSel.iva_incluido ? totalItems * (1 - 1/factorIva) : tot.iva
+    const utilidadItems = contratoSel.iva_incluido ? 0 : tot.utilidad
+    const sumaUtilidad = !contratoSel.iva_incluido && tot.sumaUtilidad
+    const totalConIva = contratoSel.iva_incluido ? totalItems : tot.total
     const valorDesactualizado = totalConIva > 0 && Math.round(Number(contratoSel.valor_total) || 0) !== Math.round(totalConIva)
 
     return (
@@ -586,9 +599,17 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
                   <td colSpan={6} style={{ padding: '9px 12px', fontWeight: 600, textAlign: 'right', color: C.g5 }}>SUBTOTAL</td>
                   <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600 }}>{fmt(totalItems)}</td>
                 </tr>
+                {contratoSel.tipo === 'instalacion' && !contratoSel.iva_incluido && (
+                  <tr style={{ background: C.g0 }}>
+                    <td colSpan={6} style={{ padding: '9px 12px', fontWeight: 600, textAlign: 'right', color: C.g5 }}>
+                      UTILIDAD {Number(tot.pct.toFixed(4))}%{sumaUtilidad ? '' : tot.modo === 'incluida' ? ' (incluida en precios)' : ' (base del IVA, no se suma)'}
+                    </td>
+                    <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600, color: sumaUtilidad ? C.bk : C.g4 }}>{fmt(utilidadItems)}</td>
+                  </tr>
+                )}
                 <tr style={{ background: C.g0 }}>
                   <td colSpan={6} style={{ padding: '9px 12px', fontWeight: 600, textAlign: 'right', color: C.g5 }}>
-                    IVA {contratoSel.tipo === 'instalacion' ? '19% sobre utilidad 10% = 1.9%' : '19%'}
+                    {etiquetaIva(contratoSel)}
                   </td>
                   <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600, color: C.g5 }}>{fmt(ivaItems)}</td>
                 </tr>

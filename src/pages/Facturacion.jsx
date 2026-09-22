@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { C, Btn, Inp, Sel, Txt, Modal, Badge, Empty, card, fmt, fmtDate, Progress } from '../components/UI.jsx'
 import { callClaude } from '../lib/api.js'
+import { totalesContrato, etiquetaIva } from '../lib/impuestos.js'
 import { supabase } from '../lib/supabase.js'
 
 const ESTADOS_ACTA = {
@@ -140,10 +141,16 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
   const cantBase = (itemId, torreId = '') => esInstalacion(contratoDeItem(itemId)) ? instaladoItem(itemId, torreId) : cantDespachada(itemId, torreId)
   const nombreBase = c => esInstalacion(c) ? 'instalado' : 'despachado'
 
+  // Utilidad e IVA según cómo maneje la constructora la utilidad (ver lib/impuestos.js)
   const calcTotales = (items, contrato) => {
     const subtotal = items.reduce((s, i) => s + Number(i.cantidad||0) * Number(i.vr_unitario_sin_iva||0), 0)
-    const iva = contrato?.tipo === 'instalacion' ? subtotal * 0.10 * 0.19 : subtotal * 0.19
-    return { subtotal, iva, total: subtotal + iva }
+    const t = totalesContrato(subtotal, contrato)
+    return { subtotal, utilidad: t.sumaUtilidad ? t.utilidad : 0, iva: t.iva, total: t.total }
+  }
+  // Lo que suma cada peso de subtotal (para repartir IVA y total por ítem)
+  const factoresItem = contrato => {
+    const t = totalesContrato(1, contrato)
+    return { iva: t.iva, total: t.total }
   }
 
   // Stats globales por tipo
@@ -253,19 +260,19 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
       toast(`No puedes facturar más de lo ${nombreBase(contrato)}:\n${msg}`, 'err')
       return
     }
-    const { subtotal, iva, total } = calcTotales(parsedItems, contrato)
+    const { subtotal, iva, total, utilidad } = calcTotales(parsedItems, contrato)
     setSavingItems(true)
     try {
       await supabase.from('items_acta_facturacion').delete().eq('acta_facturacion_id', actaSel.id)
       const rows = parsedItems.map(it => {
         const ic = items_contrato.find(i => i.ref === it.ref && i.contrato_id === actaSel.contrato_id)
         const vr = Number(it.vr_unitario_sin_iva||0)
-        const ivaI = contrato?.tipo === 'instalacion' ? vr * 0.10 * 0.19 : vr * 0.19
-        return { acta_facturacion_id: actaSel.id, item_contrato_id: ic?.id||null, cantidad: Number(it.cantidad||0), vr_unitario_sin_iva: vr, iva: ivaI * Number(it.cantidad||0), vr_total: (vr+ivaI)*Number(it.cantidad||0) }
+        const fI = factoresItem(contrato)
+        return { acta_facturacion_id: actaSel.id, item_contrato_id: ic?.id||null, cantidad: Number(it.cantidad||0), vr_unitario_sin_iva: vr, iva: vr * fI.iva * Number(it.cantidad||0), vr_total: vr * fI.total * Number(it.cantidad||0) }
       })
       const { data: its, error: e1 } = await supabase.from('items_acta_facturacion').insert(rows).select()
       if (e1) throw e1
-      const { data: actaU, error: e2 } = await supabase.from('actas_facturacion').update({ subtotal, iva, total }).eq('id', actaSel.id).select().single()
+      const { data: actaU, error: e2 } = await supabase.from('actas_facturacion').update({ subtotal, iva, total, utilidad }).eq('id', actaSel.id).select().single()
       if (e2) throw e2
       setDbData(d => ({ ...d, actas_facturacion: d.actas_facturacion.map(a => a.id === actaSel.id ? actaU : a), items_acta_facturacion: [...d.items_acta_facturacion.filter(i => i.acta_facturacion_id !== actaSel.id), ...its] }))
       setActaSel(actaU); toast('Acta guardada', 'ok'); setModalItems(false)
@@ -347,19 +354,19 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
       toast(`No puedes facturar más de lo ${nombreBase(contrato)}:\n${msg}`, 'err')
       return
     }
-    const { subtotal, iva, total } = calcTotales(validos, contrato)
+    const { subtotal, iva, total, utilidad } = calcTotales(validos, contrato)
     setSavingItems(true)
     try {
       await supabase.from('items_acta_facturacion').delete().eq('acta_facturacion_id', actaSel.id)
       const rows = validos.map(it => {
         const ic = items_contrato.find(i => i.ref === it.ref && i.contrato_id === actaSel.contrato_id)
         const vr = Number(it.vr_unitario_sin_iva||0)
-        const ivaI = contrato?.tipo === 'instalacion' ? vr * 0.10 * 0.19 : vr * 0.19
-        return { acta_facturacion_id: actaSel.id, item_contrato_id: ic?.id||null, cantidad: Number(it.cantidad), vr_unitario_sin_iva: vr, iva: ivaI*Number(it.cantidad), vr_total: (vr+ivaI)*Number(it.cantidad) }
+        const fI = factoresItem(contrato)
+        return { acta_facturacion_id: actaSel.id, item_contrato_id: ic?.id||null, cantidad: Number(it.cantidad), vr_unitario_sin_iva: vr, iva: vr * fI.iva * Number(it.cantidad), vr_total: vr * fI.total * Number(it.cantidad) }
       })
       const { data: its, error: e1 } = await supabase.from('items_acta_facturacion').insert(rows).select()
       if (e1) throw e1
-      const { data: actaU, error: e2 } = await supabase.from('actas_facturacion').update({ subtotal, iva, total }).eq('id', actaSel.id).select().single()
+      const { data: actaU, error: e2 } = await supabase.from('actas_facturacion').update({ subtotal, iva, total, utilidad }).eq('id', actaSel.id).select().single()
       if (e2) throw e2
       setDbData(d => ({ ...d, actas_facturacion: d.actas_facturacion.map(a => a.id === actaSel.id ? actaU : a), items_acta_facturacion: [...d.items_acta_facturacion.filter(i => i.acta_facturacion_id !== actaSel.id), ...its] }))
       setActaSel(actaU); toast('Acta guardada', 'ok'); setModalManual(false)
@@ -584,7 +591,7 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
                               const fmt3 = n => new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(n||0)
                               const totalX = payload2.items.reduce((s,i) => s+i.xFact, 0)
                               const totalC = payload2.items.reduce((s,i) => s+i.totalFact, 0)
-                              const html2 = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Cobro ${payload2.proyecto}</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1a1a2e}.page{padding:28px 32px}.header{background:#1F3A5F;color:white;padding:18px 24px;border-radius:8px 8px 0 0}.header h1{font-size:18px;font-weight:800;margin-bottom:2px}.header p{font-size:11px;color:#93C5FD;font-weight:600;text-transform:uppercase;letter-spacing:.06em}.subheader{background:#1E293B;padding:10px 24px;border-radius:0 0 8px 8px;margin-bottom:20px;display:flex;gap:32px;flex-wrap:wrap}.info-item{display:flex;flex-direction:column}.info-label{font-size:9px;color:#64748B;text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px}.info-value{font-size:12px;color:white;font-weight:700}table{width:100%;border-collapse:collapse;margin-bottom:0}thead tr{background:#1E3A5F}thead th{padding:9px 10px;color:white;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;text-align:right;border:1px solid #2D5A8E}thead th:nth-child(1){text-align:center;width:80px}thead th:nth-child(2){text-align:left}thead th:nth-child(3){text-align:center;width:50px}tbody tr:nth-child(even){background:#F8FAFC}tbody tr:nth-child(odd){background:#FFFFFF}tbody td{padding:8px 10px;border:1px solid #E2E8F0;font-size:10px;text-align:right;vertical-align:middle}tbody td:nth-child(1){text-align:center;font-weight:700;color:#1D4ED8}tbody td:nth-child(2){text-align:left}tbody td:nth-child(3){text-align:center;color:#64748B}tbody td:nth-child(6){font-weight:700}tbody td:nth-child(8){font-weight:700;color:#1D4ED8}.total-row{background:#1E3A5F!important}.total-row td{color:white!important;font-weight:700!important;font-size:11px!important;padding:11px 10px!important;border-color:#2D5A8E!important}.grand{background:#1D4ED8!important;font-size:13px!important}.nota{margin-top:16px;padding:12px 16px;background:#F1F5F9;border-left:3px solid #1E3A5F;border-radius:4px;font-size:9px;color:#64748B;line-height:1.6}.footer{margin-top:20px;text-align:center;font-size:9px;color:#94A3B8;padding-top:12px;border-top:1px solid #E2E8F0}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.no-print{display:none}}</style></head><body><div class="page"><div class="no-print" style="text-align:right;margin-bottom:16px"><button onclick="window.print()" style="background:#1E3A5F;color:white;border:none;padding:10px 24px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer">🖨️ Guardar / Imprimir PDF</button></div><div class="header"><h1>🪵 Santa Lucía Muebles y Pisos S.A.S.</h1><p>Informe de Cobro — Pendiente por Facturar</p></div><div class="subheader"><div class="info-item"><span class="info-label">Constructora</span><span class="info-value">${payload2.constructora}</span></div><div class="info-item"><span class="info-label">Proyecto / Obra</span><span class="info-value">${payload2.proyecto}</span></div><div class="info-item"><span class="info-label">Contrato</span><span class="info-value">#${payload2.contrato} (${payload2.tipo})</span></div><div class="info-item"><span class="info-label">Fecha</span><span class="info-value">${payload2.fecha}</span></div><div class="info-item"><span class="info-label">NIT</span><span class="info-value">900.602.879-5</span></div></div><table><thead><tr><th>Ref</th><th style="text-align:left">Descripción</th><th>UM</th><th>${payload2.tipo==='instalacion'?'Instalado':'Despachado'}</th><th>Facturado</th><th>X Facturar</th><th>Vr. Unitario</th><th>Total a Cobrar</th></tr></thead><tbody>${payload2.items.map(it=>`<tr><td>${it.ref}</td><td style="text-align:left">${it.descripcion}</td><td>${it.unidad}</td><td>${Number(it.despachado).toLocaleString('es-CO')}</td><td>${Number(it.facturado).toLocaleString('es-CO')}</td><td>${Number(it.xFact).toLocaleString('es-CO')}</td><td>${fmt3(it.vrUnit)}</td><td>${fmt3(it.totalFact)}</td></tr>`).join('')}</tbody><tr class="total-row"><td colspan="5" style="text-align:right">TOTAL PENDIENTE POR FACTURAR</td><td>${totalX.toLocaleString('es-CO')}</td><td></td><td class="grand">${fmt3(totalC)}</td></tr></table><div class="nota"><strong>Nota:</strong> ${payload2.tipo==='instalacion'?'Los valores corresponden a la instalación sin IVA. El IVA (19% sobre la utilidad del 10%) se discriminará en la factura.':'Los valores corresponden al suministro sin IVA. El IVA (19%) se discriminará en la factura.'}<br>Santa Lucía Muebles y Pisos S.A.S. · NIT 900.602.879-5 · Tel: 311.341.04.58 · cesarbeta@gmail.com</div><div class="footer">Documento generado el ${new Date().toLocaleDateString('es-CO',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div></div></body></html>`
+                              const html2 = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Cobro ${payload2.proyecto}</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1a1a2e}.page{padding:28px 32px}.header{background:#1F3A5F;color:white;padding:18px 24px;border-radius:8px 8px 0 0}.header h1{font-size:18px;font-weight:800;margin-bottom:2px}.header p{font-size:11px;color:#93C5FD;font-weight:600;text-transform:uppercase;letter-spacing:.06em}.subheader{background:#1E293B;padding:10px 24px;border-radius:0 0 8px 8px;margin-bottom:20px;display:flex;gap:32px;flex-wrap:wrap}.info-item{display:flex;flex-direction:column}.info-label{font-size:9px;color:#64748B;text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px}.info-value{font-size:12px;color:white;font-weight:700}table{width:100%;border-collapse:collapse;margin-bottom:0}thead tr{background:#1E3A5F}thead th{padding:9px 10px;color:white;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;text-align:right;border:1px solid #2D5A8E}thead th:nth-child(1){text-align:center;width:80px}thead th:nth-child(2){text-align:left}thead th:nth-child(3){text-align:center;width:50px}tbody tr:nth-child(even){background:#F8FAFC}tbody tr:nth-child(odd){background:#FFFFFF}tbody td{padding:8px 10px;border:1px solid #E2E8F0;font-size:10px;text-align:right;vertical-align:middle}tbody td:nth-child(1){text-align:center;font-weight:700;color:#1D4ED8}tbody td:nth-child(2){text-align:left}tbody td:nth-child(3){text-align:center;color:#64748B}tbody td:nth-child(6){font-weight:700}tbody td:nth-child(8){font-weight:700;color:#1D4ED8}.total-row{background:#1E3A5F!important}.total-row td{color:white!important;font-weight:700!important;font-size:11px!important;padding:11px 10px!important;border-color:#2D5A8E!important}.grand{background:#1D4ED8!important;font-size:13px!important}.nota{margin-top:16px;padding:12px 16px;background:#F1F5F9;border-left:3px solid #1E3A5F;border-radius:4px;font-size:9px;color:#64748B;line-height:1.6}.footer{margin-top:20px;text-align:center;font-size:9px;color:#94A3B8;padding-top:12px;border-top:1px solid #E2E8F0}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.no-print{display:none}}</style></head><body><div class="page"><div class="no-print" style="text-align:right;margin-bottom:16px"><button onclick="window.print()" style="background:#1E3A5F;color:white;border:none;padding:10px 24px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer">🖨️ Guardar / Imprimir PDF</button></div><div class="header"><h1>🪵 Santa Lucía Muebles y Pisos S.A.S.</h1><p>Informe de Cobro — Pendiente por Facturar</p></div><div class="subheader"><div class="info-item"><span class="info-label">Constructora</span><span class="info-value">${payload2.constructora}</span></div><div class="info-item"><span class="info-label">Proyecto / Obra</span><span class="info-value">${payload2.proyecto}</span></div><div class="info-item"><span class="info-label">Contrato</span><span class="info-value">#${payload2.contrato} (${payload2.tipo})</span></div><div class="info-item"><span class="info-label">Fecha</span><span class="info-value">${payload2.fecha}</span></div><div class="info-item"><span class="info-label">NIT</span><span class="info-value">900.602.879-5</span></div></div><table><thead><tr><th>Ref</th><th style="text-align:left">Descripción</th><th>UM</th><th>${payload2.tipo==='instalacion'?'Instalado':'Despachado'}</th><th>Facturado</th><th>X Facturar</th><th>Vr. Unitario</th><th>Total a Cobrar</th></tr></thead><tbody>${payload2.items.map(it=>`<tr><td>${it.ref}</td><td style="text-align:left">${it.descripcion}</td><td>${it.unidad}</td><td>${Number(it.despachado).toLocaleString('es-CO')}</td><td>${Number(it.facturado).toLocaleString('es-CO')}</td><td>${Number(it.xFact).toLocaleString('es-CO')}</td><td>${fmt3(it.vrUnit)}</td><td>${fmt3(it.totalFact)}</td></tr>`).join('')}</tbody><tr class="total-row"><td colspan="5" style="text-align:right">TOTAL PENDIENTE POR FACTURAR</td><td>${totalX.toLocaleString('es-CO')}</td><td></td><td class="grand">${fmt3(totalC)}</td></tr></table><div class="nota"><strong>Nota:</strong> ${payload2.tipo==='instalacion'?'Los valores corresponden a la instalación sin utilidad ni IVA. La utilidad y el IVA (19% sobre la utilidad, según el contrato) se discriminarán en la factura.':'Los valores corresponden al suministro sin IVA. El IVA (19%) se discriminará en la factura.'}<br>Santa Lucía Muebles y Pisos S.A.S. · NIT 900.602.879-5 · Tel: 311.341.04.58 · cesarbeta@gmail.com</div><div class="footer">Documento generado el ${new Date().toLocaleDateString('es-CO',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div></div></body></html>`
                               const v2 = window.open('','_blank','width=960,height=700')
                               if(v2){v2.document.write(html2);v2.document.close()}
                             }}>📊 Exportar cobro</Btn>
@@ -713,7 +720,7 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
               {[
                 { label: 'Subtotal', value: fmt(actaSel.subtotal), color: C.bk },
-                { label: `IVA ${contrato?.tipo==='instalacion'?'1.9%':'19%'}`, value: fmt(actaSel.iva), color: C.g5 },
+                { label: Number(actaSel.utilidad) ? `Utilidad + IVA` : etiquetaIva(contrato), value: Number(actaSel.utilidad) ? `${fmt(actaSel.utilidad)} + ${fmt(actaSel.iva)}` : fmt(actaSel.iva), color: C.g5 },
                 { label: 'Total acta', value: fmt(actaSel.total), color: C.gnD },
                 { label: 'Acumulado contrato', value: fmt(totalFactContrato(actaSel.contrato_id)), color: C.or, sub: `de ${fmt(contrato?.valor_total)}` },
               ].map((s,i) => (
@@ -762,8 +769,14 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
                       <td colSpan={5} style={{ padding:'9px 12px', textAlign:'right', fontWeight:600, color:C.g5 }}>SUBTOTAL</td>
                       <td colSpan={2} style={{ padding:'9px 12px', textAlign:'right', fontWeight:600 }}>{fmt(actaSel.subtotal)}</td>
                     </tr>
+                    {Number(actaSel.utilidad) > 0 && (
+                      <tr style={{ background:C.g0 }}>
+                        <td colSpan={5} style={{ padding:'9px 12px', textAlign:'right', fontWeight:600, color:C.g5 }}>UTILIDAD {Number(totalesContrato(1, contrato).pct.toFixed(4))}%</td>
+                        <td colSpan={2} style={{ padding:'9px 12px', textAlign:'right', fontWeight:600 }}>{fmt(actaSel.utilidad)}</td>
+                      </tr>
+                    )}
                     <tr style={{ background:C.g0 }}>
-                      <td colSpan={5} style={{ padding:'9px 12px', textAlign:'right', fontWeight:600, color:C.g5 }}>IVA {contrato?.tipo==='instalacion'?'1.9%':'19%'}</td>
+                      <td colSpan={5} style={{ padding:'9px 12px', textAlign:'right', fontWeight:600, color:C.g5 }}>{etiquetaIva(contrato)}</td>
                       <td colSpan={2} style={{ padding:'9px 12px', textAlign:'right', color:C.g5 }}>{fmt(actaSel.iva)}</td>
                     </tr>
                     <tr style={{ background:C.g0, borderTop:`1px solid ${C.g2}` }}>
@@ -907,9 +920,10 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
           </div>
           {itemsManual.some(i => Number(i.cantidad)>0) && (() => {
             const c = contratos.find(x => x.id === actaSel?.contrato_id)
-            const { subtotal, iva, total } = calcTotales(itemsManual.filter(i=>Number(i.cantidad)>0), c)
+            const { subtotal, iva, total, utilidad } = calcTotales(itemsManual.filter(i=>Number(i.cantidad)>0), c)
             return <div style={{ ...card, background:C.g0, padding:'12px 16px', marginBottom:16, display:'flex', gap:24 }}>
               <span style={{ fontSize:13 }}>Subtotal: <strong>{fmt(subtotal)}</strong></span>
+              {utilidad > 0 && <span style={{ fontSize:13, color:C.g5 }}>Utilidad: <strong>{fmt(utilidad)}</strong></span>}
               <span style={{ fontSize:13, color:C.g5 }}>IVA: <strong>{fmt(iva)}</strong></span>
               <span style={{ fontSize:14, color:C.gnD, fontWeight:700 }}>Total: <strong>{fmt(total)}</strong></span>
             </div>
