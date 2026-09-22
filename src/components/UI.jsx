@@ -8,6 +8,8 @@ export const C = {
   bk: '#23272E', g9: '#1B1F25', g8: '#2B313A', g7: '#3A414B',
   g5: '#616B78', g4: '#98A1AE', g3: '#C6CCD5', g2: '#E1E5EA',
   g1: '#F1F3F6', g0: '#F6F7F9', wh: '#FFFFFF',
+  // Fondo de la aplicación: gris claro para que las tarjetas y botones resalten
+  bg: '#E8ECF2',
   gn: '#22C55E', gnL: '#DCFCE7', gnD: '#15803D',
   rd: '#EF4444', rdL: '#FEE2E2',
   am: '#F59E0B', amL: '#FEF3C7',
@@ -16,7 +18,7 @@ export const C = {
 
 // ── Estilos base ───────────────────────────────────────────
 export const card = {
-  background: C.wh, border: `1px solid ${C.g2}`,
+  background: C.wh, border: `1px solid #DBE0E8`,
   borderRadius: 14, padding: '1rem 1.25rem',
   boxShadow: '0 1px 2px rgba(35,39,46,.04), 0 6px 16px -12px rgba(35,39,46,.18)',
 }

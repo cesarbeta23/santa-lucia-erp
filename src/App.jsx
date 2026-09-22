@@ -130,7 +130,8 @@ function Login({ onLogin }) {
   return (
     <div style={{
       minHeight: '100vh', display: 'flex', alignItems: 'center',
-      justifyContent: 'center', background: C.g9, fontFamily: 'inherit',
+      justifyContent: 'center', fontFamily: 'inherit',
+      background: `radial-gradient(1200px 600px at 50% -10%, ${C.g7} 0%, ${C.g9} 60%)`,
     }}>
       <div style={{
         background: C.wh, borderRadius: 20, padding: '2.5rem',
@@ -468,7 +469,7 @@ export default function App() {
 
       {/* Área de contenido */}
       <main style={{
-        flex: 1, overflow: 'auto', background: C.g0,
+        flex: 1, overflow: 'auto', background: C.bg,
         display: 'flex', flexDirection: 'column',
       }}>
         {loading ? (
