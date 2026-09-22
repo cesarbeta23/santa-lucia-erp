@@ -18,14 +18,14 @@ export const C = {
 
 // ── Estilos base ───────────────────────────────────────────
 export const card = {
-  background: C.wh, border: `1px solid #DBE0E8`,
+  background: C.wh, border: `1px solid #C9D1DB`,
   borderRadius: 14, padding: '1rem 1.25rem',
   boxShadow: '0 1px 2px rgba(35,39,46,.04), 0 6px 16px -12px rgba(35,39,46,.18)',
 }
 
 export const iSt = {
   width: '100%', boxSizing: 'border-box',
-  padding: '8px 12px', border: `1px solid ${C.g2}`,
+  padding: '8px 12px', border: `1px solid #C2CAD5`,
   borderRadius: 8, fontSize: 14, fontFamily: 'inherit',
   color: C.bk, background: C.wh,
 }
@@ -33,7 +33,7 @@ export const iSt = {
 // Cada variante lleva el borde del color de la acción
 const bV = {
   primary: { background: C.or, border: `1px solid ${C.orD}`, color: C.wh, boxShadow: '0 1px 2px rgba(194,65,12,.25)' },
-  default: { background: C.wh, border: `1px solid ${C.g3}`, color: C.bk, boxShadow: '0 1px 2px rgba(35,39,46,.05)' },
+  default: { background: C.wh, border: `1px solid #A9B3C0`, color: C.bk, boxShadow: '0 1px 2px rgba(35,39,46,.08)' },
   danger:  { background: C.rdL, border: '1px solid #F5A8A8', color: '#B91C1C' },
   success: { background: C.gnL, border: '1px solid #8FE0AE', color: C.gnD },
   amber:   { background: C.amL, border: '1px solid #F2CE73', color: '#B45309' },
