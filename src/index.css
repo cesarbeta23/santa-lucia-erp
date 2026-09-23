@@ -98,8 +98,16 @@ tbody tr:hover { background: var(--or-l); }
   /* Bloques de dos columnas: uno debajo del otro */
   [style*="grid-template-columns: 1fr 1fr"] { grid-template-columns: 1fr !important; }
 
-  /* Tablas: se deslizan de lado y las columnas no se estrujan */
-  table { min-width: 620px; }
+  /* Tablas: el deslizamiento ocurre DENTRO del cuadro, no en la página */
+  main { overflow-x: hidden !important; }
+  main > div { max-width: 100%; overflow-x: hidden; }
+  [style*="overflow: auto"], [style*="overflow:auto"],
+  [style*="overflow-x: auto"], [style*="overflow-x:auto"] {
+    max-width: 100%;
+    overflow-x: auto !important;
+    touch-action: pan-x pan-y;
+  }
+  table { width: max-content; min-width: 100%; }
   table th, table td { padding: 7px 9px !important; font-size: 11.5px !important; }
 
   /* Menos aire perdido en tarjetas y modales */
