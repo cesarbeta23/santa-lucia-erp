@@ -550,7 +550,7 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
           <Empty icon="📄" title="Sin ítems" desc="Carga el PDF o imagen del contrato para extraer los ítems automáticamente."
             action={<Btn variant="primary" onClick={() => abrirModalItems(contratoSel)}>📎 Cargar contrato (PDF/JPG)</Btn>} />
         ) : (
-          <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
+          <div style={{ ...card, padding: 0, display: 'block', width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ background: C.g0 }}>
@@ -602,7 +602,7 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
                 {contratoSel.tipo === 'instalacion' && !contratoSel.iva_incluido && (
                   <tr style={{ background: C.g0 }}>
                     <td colSpan={6} style={{ padding: '9px 12px', fontWeight: 600, textAlign: 'right', color: C.g5 }}>
-                      UTILIDAD {Number(tot.pct.toFixed(4))}%{sumaUtilidad ? '' : tot.modo === 'incluida' ? ' (incluida en precios)' : ' (base del IVA, no se suma)'}
+                      UTILIDAD {Number(tot.pct.toFixed(4))}%{sumaUtilidad ? '' : tot.modo === 'incluida' ? ` (incluida: sobre ${fmt(totalItems / (1 + tot.pct / 100))})` : ' (base del IVA, no se suma)'}
                     </td>
                     <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 600, color: sumaUtilidad ? C.bk : C.g4 }}>{fmt(utilidadItems)}</td>
                   </tr>
@@ -709,7 +709,7 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
                     </Btn>
                   </div>
                 </div>
-                <div style={{ maxHeight: 340, overflowY: 'auto', border: `1px solid ${C.g2}`, borderRadius: 8, marginBottom: 16 }}>
+                <div style={{ maxHeight: 340, overflowY: 'auto', overflowX: 'auto', WebkitOverflowScrolling: 'touch', maxWidth: '100%', minWidth: 0, border: `1px solid ${C.g2}`, borderRadius: 8, marginBottom: 16 }}>
                   <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
                     <thead style={{ background: C.g0, position: 'sticky', top: 0 }}>
                       <tr>

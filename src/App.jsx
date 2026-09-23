@@ -59,10 +59,9 @@ const MODULES = [
   {
     section: 'Comercial',
     items: [
-      { key: 'comercial',    label: 'Cotizaciones',    icon: '📋', roles: TODOS_MENOS_FACT },
-      { key: 'contratos',    label: 'Contratos',       icon: '📄', roles: CON_FACT },
-      { key: 'proyectos',    label: 'Proyectos',       icon: '🏗️', roles: TODOS_MENOS_FACT },
       { key: 'constructoras',label: 'Constructoras',   icon: '🏢', roles: TODOS_MENOS_FACT },
+      { key: 'proyectos',    label: 'Proyectos',       icon: '🏗️', roles: TODOS_MENOS_FACT },
+      { key: 'contratos',    label: 'Contratos',       icon: '📄', roles: CON_FACT },
     ],
   },
   {
