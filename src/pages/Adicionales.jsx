@@ -394,7 +394,7 @@ Santa Lucía Muebles y Pisos S.A.S. · NIT 900.602.879-5 · Tel: 311.341.04.58 �
             : tab === 'santalucia' ? 'Los adicionales que asumimos nosotros aparecen acá.'
             : 'Todos los adicionales están clasificados.'} />
       ) : (
-        <div style={{ ...card, padding: 0, overflow: 'auto' }}>
+        <div style={{ ...card, padding: 0, display: 'block', width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ background: '#2B313A' }}>

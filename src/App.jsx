@@ -486,7 +486,7 @@ export default function App() {
             <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
           </div>
         ) : (
-          <div key={navKey} style={{ padding: esMovil() ? '12px 12px' : '24px 28px', flex: 1 }}>
+          <div key={navKey} style={{ padding: esMovil() ? '12px 12px' : '24px 28px', flex: 1, minWidth: 0, maxWidth: '100%', overflowX: 'hidden' }}>
             {/* botón de menú (en celular siempre; en PC para ganar espacio) */}
             <button onClick={() => setMenuAbierto(a => !a)} title="Menú"
               style={{ position: 'sticky', top: 0, zIndex: 30, marginBottom: 10, background: C.wh, color: C.bk, border: `1px solid ${C.g3}`, borderRadius: 9, padding: '6px 12px', fontSize: 16, cursor: 'pointer', boxShadow: '0 1px 2px rgba(35,39,46,.06)' }}>

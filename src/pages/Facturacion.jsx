@@ -599,7 +599,7 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
                           </div>
                         )}
                       </div>
-                      <div style={{ ...card, padding: 0, overflow: 'auto', marginBottom: 12 }}>
+                      <div style={{ ...card, padding: 0, display: 'block', width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch', marginBottom: 12 }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 600 }}>
                           <thead>
                             <tr style={{ background: C.g0 }}>

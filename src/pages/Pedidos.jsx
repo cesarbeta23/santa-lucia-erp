@@ -419,7 +419,7 @@ export default function Pedidos({ dbData, setDbData, toast, nav, irA, puedeEdita
         {/* Modal ingreso manual */}
         {modalManual && (
           <Modal title="Ítems del pedido — entrada manual" onClose={() => setModalManual(false)} wide fullscreen>
-            <div style={{ overflowX: 'auto', marginBottom: 16 }}>
+            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%', maxWidth: '100%', minWidth: 0, marginBottom: 16 }}>
               <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse', minWidth: 700 }}>
                 <thead>
                   <tr style={{ background: C.g0 }}>

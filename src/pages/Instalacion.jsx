@@ -534,7 +534,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
 
       {/* ── Avance por ítem ── */}
       {tab === 'avance' && (
-        <div style={{ ...card, padding: 0, overflow: 'auto' }}>
+        <div style={{ ...card, padding: 0, display: 'block', width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: '#2B313A' }}>
@@ -621,7 +621,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
               <span><span style={{ display: 'inline-block', width: 12, height: 12, background: '#DCFCE7', border: '1px solid #BBF7D0', borderRadius: 3, marginRight: 5, verticalAlign: 'middle' }} />Instalado completo</span>
               <span><span style={{ display: 'inline-block', width: 12, height: 12, background: '#FED7AA', border: '1px solid #FDBA74', borderRadius: 3, marginRight: 5, verticalAlign: 'middle' }} />Entregado a obra</span>
             </div>
-            <div style={{ ...card, padding: 0, overflow: 'auto' }}>
+            <div style={{ ...card, padding: 0, display: 'block', width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ background: '#2B313A' }}>
@@ -778,7 +778,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
           <div style={{ marginBottom: 10 }}>
             <Btn size="sm" onClick={llenarConGestion}>↧ Llenar con lo cargado en Gestión de Obras</Btn>
           </div>
-          <div style={{ ...card, padding: 0, overflow: 'auto' }}>
+          <div style={{ ...card, padding: 0, display: 'block', width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr style={{ background: C.g1 }}>

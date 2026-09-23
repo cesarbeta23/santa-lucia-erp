@@ -487,7 +487,7 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
                 )}
 
                 {/* Cuadro de control — ítems del contrato */}
-                <div style={{ ...card, padding: 0, overflow: 'auto', marginBottom: 16 }}>
+                <div style={{ ...card, padding: 0, display: 'block', width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch', marginBottom: 16 }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 600 }}>
                     <thead>
                       <tr style={{ background: C.g0 }}>
@@ -754,7 +754,7 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
             <p style={{ fontSize: 13, color: C.g5, marginBottom: 10 }}>
               Cuánto de cada ítem va a cada torre. Con eso el despachado y el faltante de cada torre se comparan contra lo suyo.
             </p>
-            <div style={{ ...card, padding: 0, overflow: 'auto' }}>
+            <div style={{ ...card, padding: 0, display: 'block', width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ background: C.g1 }}>

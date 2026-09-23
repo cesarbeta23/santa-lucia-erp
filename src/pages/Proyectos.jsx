@@ -788,7 +788,7 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
 
       {retDet && (
         <Modal title={`Retenidos por instalador — ${retDet.obra?.nombre || ''}`} onClose={() => setRetDet(null)} wide>
-          <div style={{ ...card, padding: 0, overflow: 'auto' }}>
+          <div style={{ ...card, padding: 0, display: 'block', width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr style={{ background: C.g1 }}>
@@ -835,7 +835,7 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
 
       {corteDet && (
         <Modal title={`Pagos del corte ${corteDet.corte}`} onClose={() => setCorteDet(null)} wide>
-          <div style={{ ...card, padding: 0, overflow: 'auto' }}>
+          <div style={{ ...card, padding: 0, display: 'block', width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr style={{ background: C.g1 }}>

@@ -388,7 +388,7 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
             <div style={{ fontSize: 11, fontWeight: 700, color: C.g5, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
               Cuadro de planificación por lote
             </div>
-            <div style={{ ...card, padding: 0, overflow: 'auto' }}>
+            <div style={{ ...card, padding: 0, display: 'block', width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 600 }}>
                 <thead>
                   <tr style={{ background: '#2B313A' }}>
@@ -526,7 +526,7 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
                   ? 'Se pasan solo los excesos: el ítem queda con lo que realmente se despachó y esa cantidad de más se descuenta de los lotes siguientes. Lo que falta se queda en este lote y se sigue despachando.'
                   : 'Este lote no cuadra exacto con lo despachado. Revisa las diferencias:'}
               </p>
-              <div style={{ ...card, padding: 0, overflow: 'auto', marginBottom: 16 }}>
+              <div style={{ ...card, padding: 0, display: 'block', width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch', marginBottom: 16 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead>
                     <tr style={{ background: C.g1 }}>

@@ -103,7 +103,6 @@ tbody tr:hover { background: var(--or-l); }
   main > div { max-width: 100%; overflow-x: hidden; }
   /* Dentro de una cuadrícula o de un flex, el hijo se estira para caber en su
      contenido; con min-width:0 se deja encoger y ahí sí aparece el deslizamiento. */
-  main div { min-width: 0; }
   [style*="overflow: auto"], [style*="overflow:auto"],
   [style*="overflow-x: auto"], [style*="overflow-x:auto"] {
     display: block;
@@ -114,6 +113,9 @@ tbody tr:hover { background: var(--or-l); }
     touch-action: pan-x;
   }
   table { width: max-content; min-width: 100%; }
+  /* aviso visual de que el cuadro se desliza */
+  [style*="overflow-x: auto"]::-webkit-scrollbar { height: 6px; }
+  [style*="overflow-x: auto"]::-webkit-scrollbar-thumb { background: var(--g3); border-radius: 3px; }
   table th, table td { padding: 7px 9px !important; font-size: 11.5px !important; }
 
   /* Menos aire perdido en tarjetas y modales */
