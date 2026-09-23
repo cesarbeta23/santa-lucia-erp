@@ -101,11 +101,17 @@ tbody tr:hover { background: var(--or-l); }
   /* Tablas: el deslizamiento ocurre DENTRO del cuadro, no en la página */
   main { overflow-x: hidden !important; }
   main > div { max-width: 100%; overflow-x: hidden; }
+  /* Dentro de una cuadrícula o de un flex, el hijo se estira para caber en su
+     contenido; con min-width:0 se deja encoger y ahí sí aparece el deslizamiento. */
+  main div { min-width: 0; }
   [style*="overflow: auto"], [style*="overflow:auto"],
   [style*="overflow-x: auto"], [style*="overflow-x:auto"] {
+    display: block;
     max-width: 100%;
+    min-width: 0 !important;
     overflow-x: auto !important;
-    touch-action: pan-x pan-y;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
   }
   table { width: max-content; min-width: 100%; }
   table th, table td { padding: 7px 9px !important; font-size: 11.5px !important; }
