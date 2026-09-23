@@ -426,9 +426,14 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
   const aptos  = aptosDe(obra)
 
   // Contratado según la torre: si se repartió, lo de esa torre; si no, el contrato completo
+  const repartoCubre = it => {
+    const suma = torres.reduce((x, t) => x + (asignadoTorre(it.id, t.id) || 0), 0)
+    return suma > 0 && suma >= Number(it.cantidad || 0)
+  }
   const contratadoDe = it => {
     if (!torreSel) return Number(it.cantidad || 0)
-    return asignadoTorre(it.id, torreSel)
+    const v = asignadoTorre(it.id, torreSel)
+    return v !== null ? v : (repartoCubre(it) ? 0 : null)
   }
   // Facturado según la torre (actas marcadas con esa torre)
   const facturadoTorre = itemId => {
@@ -558,7 +563,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                     </td>
                     <td style={{ padding: '8px 10px', color: C.g5 }}>{it.unidad}</td>
                     <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600 }}>
-                      {contrT === null ? <span style={{ fontSize: 11, color: C.or }}>sin repartir</span> : contr.toLocaleString('es-CO')}
+                      {contrT === null ? <span style={{ fontSize: 11, color: C.or }}>sin repartir aún</span> : contr.toLocaleString('es-CO')}
                       {torreSel && contrT !== null && <div style={{ fontSize: 10, color: C.g4, fontWeight: 400 }}>de {Number(it.cantidad || 0).toLocaleString('es-CO')}</div>}
                     </td>
                     <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600,

@@ -52,7 +52,16 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
     return r ? Number(r.cantidad || 0) : null
   }
   // Contratado según la torre elegida (null = esa torre no tiene reparto)
-  const contratadoDe = it => torreSel ? asignadoTorre(it.id, torreSel) : Number(it.cantidad || 0)
+  // Si el reparto ya cubre todo el contrato, lo que no tiene esa torre es 0 (no "sin repartir")
+  const repartoCubre = it => {
+    const suma = torresDe(proySel).reduce((x, t) => x + (asignadoTorre(it.id, t.id) || 0), 0)
+    return suma > 0 && suma >= Number(it.cantidad || 0)
+  }
+  const contratadoDe = it => {
+    if (!torreSel) return Number(it.cantidad || 0)
+    const v = asignadoTorre(it.id, torreSel)
+    return v !== null ? v : (repartoCubre(it) ? 0 : null)
+  }
 
   // Cantidad despachada de un ítem del contrato (todas las torres, o una)
   const cantDespachada = (itemContratoId, torreId = torreSel) => {
@@ -503,7 +512,7 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
                             <td style={{ padding: '8px 12px', maxWidth: 280 }}>{it.descripcion}</td>
                             <td style={{ padding: '8px 12px', textAlign: 'center', color: C.g5 }}>{it.unidad}</td>
                             <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }}>
-                              {contrT === null ? <span style={{ fontSize: 11, color: C.or }}>sin repartir</span> : contratado.toLocaleString('es-CO')}
+                              {contrT === null ? <span style={{ fontSize: 11, color: C.or }}>sin repartir aún</span> : contratado.toLocaleString('es-CO')}
                               {torreSel && contrT !== null && <div style={{ fontSize: 10, color: C.g4, fontWeight: 400 }}>de {Number(it.cantidad || 0).toLocaleString('es-CO')}</div>}
                             </td>
                             <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: C.gnD }}>{despachado.toLocaleString('es-CO')}</td>

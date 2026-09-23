@@ -44,7 +44,15 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
     return r ? Number(r.cantidad || 0) : null
   }
   // Contratado para la torre activa (null = sin repartir)
-  const contratadoDe = it => multi ? asignadoTorre(it.id, tP) : Number(it.cantidad || 0)
+  const repartoCubre = it => {
+    const suma = torres.reduce((x, t) => x + (asignadoTorre(it.id, t.id) || 0), 0)
+    return suma > 0 && suma >= Number(it.cantidad || 0)
+  }
+  const contratadoDe = it => {
+    if (!multi) return Number(it.cantidad || 0)
+    const v = asignadoTorre(it.id, tP)
+    return v !== null ? v : (repartoCubre(it) ? 0 : null)
+  }
 
   // ── Helpers ───────────────────────────────────────────────
   const cantDespLote = (loteId, itemContratoId) =>
