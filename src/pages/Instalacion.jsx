@@ -107,12 +107,26 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
   const instaladoItem = (obra, itemId) =>
     aptosDe(obra).reduce((s, a) => s + instaladoEnApto(a, itemId), 0)
 
-  // Cuántas partes de un ítem van chuleadas en un apto (para la vista por apto)
+  // Cuánto va instalado de un ítem en un apto, EN UNIDADES (para la vista por apto).
+  // Antes se contaban partes con `some(completado)`: bastaba una fila marcada para dar
+  // la parte por hecha, así que 2 puertas de 4 se veían como completo. Ahora se compara
+  // lo instalado contra lo programado, y cada parte solo cuenta si están todas sus unidades.
   function parcialEnApto(apto, itemId) {
     const eids = partesEnApto(apto, itemId)
+    if (!eids.length) return { hechas: 0, total: 0, partesHechas: 0, partesTotal: 0 }
     const todos = elsDelApto(apto)
-    const hechas = eids.filter(eid => todos.some(e => e.elementoId === eid && e.completado)).length
-    return { hechas, total: eids.length }
+    const unidades = (eid, soloHechas) => todos
+      .filter(e => e.elementoId === eid && (!soloHechas || e.completado))
+      .reduce((s, e) => s + Number(e.cantidad || 1), 0)
+    const partesHechas = eids.filter(eid => {
+      const prog = unidades(eid, false)
+      return prog > 0 && unidades(eid, true) >= prog
+    }).length
+    return {
+      hechas: instaladoEnApto(apto, itemId),
+      total: programadoEnApto(apto, itemId),
+      partesHechas, partesTotal: eids.length,
+    }
   }
 
   // ── Entregas a obra (a satisfacción, con memorando) ───────
@@ -641,13 +655,15 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                         {torres.length > 1 && !torreSel && <div style={{ fontSize: 9, color: C.or, fontWeight: 600 }}>{a.torreNombre}</div>}
                       </td>
                       {its.map(it => {
-                        const { hechas, total } = parcialEnApto(a, it.id)
-                        const listo = total > 0 && hechas === total
+                        const { hechas, total, partesHechas, partesTotal } = parcialEnApto(a, it.id)
+                        // Completo = todas las unidades y todas las partes (puerta, chapa, tope…)
+                        const listo = total > 0 && hechas >= total && partesHechas === partesTotal
                         const ent = entregaDe(it.id, a.id)
                         const entregado = !!ent?.entregado
                         const fondoEnt = '#FED7AA'   // naranja tenue: ya entregado a obra
                         return [
-                          <td key={it.id} style={{ padding: '6px 8px', textAlign: 'center', borderLeft: `2px solid ${C.g2}`,
+                          <td key={it.id} title={total === 0 ? '' : `${hechas} de ${total} unidades · ${partesHechas} de ${partesTotal} partes`}
+                            style={{ padding: '6px 8px', textAlign: 'center', borderLeft: `2px solid ${C.g2}`,
                             background: entregado ? fondoEnt : listo ? '#DCFCE7' : hechas > 0 ? '#FFF7ED' : undefined }}>
                             {total === 0 ? <span style={{ color: C.g3 }}>—</span>
                               : listo ? <span style={{ color: entregado ? '#9A3412' : C.gnD, fontWeight: 700 }}>✓</span>
