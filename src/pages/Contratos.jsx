@@ -108,6 +108,8 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
   const [modalItems, setModalItems]       = useState(false)
   const [editandoCant, setEditandoCant]   = useState(null)
   const [cantEdit, setCantEdit]           = useState('')
+  const [editandoTxt, setEditandoTxt]     = useState(null)   // `${itemId}|ref` o `${itemId}|descripcion`
+  const [txtEdit, setTxtEdit]             = useState('')
   const [form, setForm]               = useState(emptyContrato)
   const [editId, setEditId]           = useState(null)
   const [delId, setDelId]             = useState(null)
@@ -207,6 +209,46 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
       toast('Cantidad actualizada', 'ok')
     } catch (e) { toast('Error: ' + e.message, 'err') }
     setEditandoCant(null); setCantEdit('')
+  }
+
+  // ── Editar ref o descripción del ítem ─────────────────────
+  // La ref es la llave con la que las actas encuentran su ítem: si el contrato ya tiene
+  // algo facturado, cambiarla dejaría esas actas huérfanas. Por eso solo se deja editar
+  // mientras no haya facturación (ver `refEditable` en la tabla).
+  async function guardarCampoItem(itemId, campo) {
+    const valor = String(txtEdit || '').trim()
+    if (!valor) { toast(campo === 'ref' ? 'La ref no puede quedar vacía' : 'La descripción no puede quedar vacía', 'err'); return }
+    try {
+      const { data, error } = await supabase.from('items_contrato').update({ [campo]: valor }).eq('id', itemId).select().single()
+      if (error) throw error
+      setDbData(d => ({ ...d, items_contrato: d.items_contrato.map(i => i.id === itemId ? data : i) }))
+      toast(campo === 'ref' ? 'Ref actualizada' : 'Descripción actualizada', 'ok')
+    } catch (e) { toast('Error: ' + e.message, 'err') }
+    setEditandoTxt(null); setTxtEdit('')
+  }
+
+  // Celda de texto editable con un clic (se usa para ref y descripción)
+  function CeldaTexto({ item, campo, editable, ancho, estilo }) {
+    const k = `${item.id}|${campo}`
+    if (editandoTxt === k) {
+      return (
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <input value={txtEdit} onChange={e => setTxtEdit(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') guardarCampoItem(item.id, campo); if (e.key === 'Escape') setEditandoTxt(null) }}
+            autoFocus style={{ width: ancho, padding: '3px 6px', border: '1px solid #F97316', borderRadius: 4, fontSize: 12 }} />
+          <button onClick={() => guardarCampoItem(item.id, campo)} style={{ background:'#15803D', border:'none', color:'white', borderRadius:4, padding:'3px 8px', cursor:'pointer', fontSize:12 }}>✓</button>
+          <button onClick={() => setEditandoTxt(null)} style={{ background:'#D1D1D6', border:'none', borderRadius:4, padding:'3px 8px', cursor:'pointer', fontSize:12 }}>✕</button>
+        </div>
+      )
+    }
+    if (!editable) return <span style={estilo}>{item[campo]}</span>
+    return (
+      <span onClick={() => { setEditandoTxt(k); setTxtEdit(String(item[campo] || '')) }}
+        title={campo === 'ref' ? 'Clic para editar la ref' : 'Clic para editar la descripción'}
+        style={{ ...estilo, cursor: 'pointer', borderBottom: '1px dashed #C7C7CC', paddingBottom: 1 }}>
+        {item[campo]}
+      </span>
+    )
   }
 
   // ── Extracción IA ─────────────────────────────────────────
@@ -494,6 +536,9 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
     const sumaUtilidad = !contratoSel.iva_incluido && tot.sumaUtilidad
     const totalConIva = contratoSel.iva_incluido ? totalItems : tot.total
     const valorDesactualizado = totalConIva > 0 && Math.round(Number(contratoSel.valor_total) || 0) !== Math.round(totalConIva)
+    // Ref y descripción solo se editan si el contrato no tiene actas: las actas guardan
+    // la ref como texto y buscan el ítem por ella. Cambiarla después las desconecta.
+    const refEditable = actas_facturacion.filter(a => a.contrato_id === contratoSel.id).length === 0
 
     return (
       <div>
@@ -550,6 +595,12 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
           <Empty icon="📄" title="Sin ítems" desc="Carga el PDF o imagen del contrato para extraer los ítems automáticamente."
             action={<Btn variant="primary" onClick={() => abrirModalItems(contratoSel)}>📎 Cargar contrato (PDF/JPG)</Btn>} />
         ) : (
+          <>
+          <div style={{ fontSize: 12, color: refEditable ? C.g5 : C.or, marginBottom: 8 }}>
+            {refEditable
+              ? 'Clic en la ref, la descripción o la cantidad para editarlas.'
+              : '🔒 Este contrato ya tiene actas: la ref y la descripción quedan bloqueadas para no desconectarlas. La cantidad sí se puede editar.'}
+          </div>
           <div style={{ ...card, padding: 0, display: 'block', width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
@@ -563,8 +614,13 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
                 {items.map((item, i) => (
                   <tr key={item.id} style={{ borderBottom: `1px solid ${C.g1}` }}>
                     <td style={{ padding: '9px 12px', color: C.g4, fontSize: 12 }}>{item.orden || i+1}</td>
-                    <td style={{ padding: '9px 12px', fontWeight: 600, color: C.or, whiteSpace: 'nowrap' }}>{item.ref}</td>
-                    <td style={{ padding: '9px 12px', maxWidth: 360 }}>{item.descripcion}</td>
+                    <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
+                      <CeldaTexto item={item} campo="ref" editable={refEditable} ancho={110}
+                        estilo={{ fontWeight: 600, color: C.or }} />
+                    </td>
+                    <td style={{ padding: '9px 12px', maxWidth: 360 }}>
+                      <CeldaTexto item={item} campo="descripcion" editable={refEditable} ancho={300} estilo={{}} />
+                    </td>
                     <td style={{ padding: '9px 12px', color: C.g5 }}>{item.unidad}</td>
                     <td style={{ padding: '9px 12px', textAlign: 'right' }}>
                         {editandoCant === item.id ? (
@@ -620,6 +676,7 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
               </tfoot>
             </table>
           </div>
+          </>
         )}
 
         {/* Modal cargar ítems con IA */}
