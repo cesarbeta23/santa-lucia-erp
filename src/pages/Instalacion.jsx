@@ -309,6 +309,24 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
         const { data, error } = await supabase.from('subitems_instalacion').insert(rows).select()
         if (error) throw error
         nuevas = data
+
+        // La unidad se le pasa al elemento de Gestión, no solo a la parte del ERP.
+        // Si no, un zócalo enlazado se queda en "und" y allá sale el selector de
+        // "42 de 42", que solo tiene sentido en piezas contables.
+        const elsAct = []
+        for (const p of filas.filter(x => x.elemento_id)) {
+          const el = (dbData.elementos || []).find(e => e.id === p.elemento_id)
+          const uNueva = (p.unidad || 'und').trim()
+          if (!el || String(el.unidad || '').trim().toLowerCase() === uNueva.toLowerCase()) continue
+          const { data: elAct, error: e2 } = await supabase.from('elementos')
+            .update({ unidad: uNueva }).eq('id', p.elemento_id).select().single()
+          if (e2) { console.error('no se pudo cambiar la unidad del elemento:', e2.message); continue }
+          elsAct.push(elAct)
+        }
+        if (elsAct.length) {
+          setDbData(d => ({ ...d, elementos: (d.elementos || []).map(e => elsAct.find(a => a.id === e.id) || e) }))
+          toast(`Unidad actualizada en ${elsAct.length} elemento(s) de la obra`, 'ok')
+        }
       }
       setDbData(d => ({
         ...d,
