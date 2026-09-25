@@ -317,7 +317,16 @@ export default function App() {
       return { ...s.user, _exp: s.exp }
     } catch { return null }
   })
-  const [view, setView]     = useState('dashboard')
+  // Al recargar se vuelve a donde estabas, no al dashboard. Se guarda el módulo y el
+  // contexto (proyecto, contrato, acta…), que es lo que hace falta para reabrir la vista.
+  const RUTA = 'erp_ruta'
+  const rutaGuardada = () => {
+    try { return JSON.parse(sessionStorage.getItem(RUTA) || 'null') } catch { return null }
+  }
+  const guardarRuta = (key, params) => {
+    try { sessionStorage.setItem(RUTA, JSON.stringify({ view: key, nav: params || null })) } catch { /* modo privado */ }
+  }
+  const [view, setView]     = useState(() => rutaGuardada()?.view || 'dashboard')
   const esMovil = () => typeof window !== 'undefined' && window.innerWidth < 900
   const [menuAbierto, setMenuAbierto] = useState(() => !esMovil())
   useEffect(() => {
@@ -325,7 +334,7 @@ export default function App() {
     window.addEventListener('resize', alCambiar)
     return () => window.removeEventListener('resize', alCambiar)
   }, [])
-  const [nav, setNav]       = useState(null)   // { proyectoId, contratoId, pedidoId, actaId, remisionId, desde }
+  const [nav, setNav]       = useState(() => rutaGuardada()?.nav || null)   // { proyectoId, contratoId, pedidoId, actaId, remisionId, desde }
   const [navKey, setNavKey] = useState(0)      // fuerza a remontar la página al navegar
   const [toasts, setToasts] = useState([])
   const [dbData, setDbData] = useState({
@@ -356,6 +365,7 @@ export default function App() {
     setUser(null)
     setView('dashboard')
     setNav(null)
+    try { sessionStorage.removeItem(RUTA) } catch { /* modo privado */ }
   }
 
   // Si el rol no tiene la vista actual (ej. producción no ve Dashboard), ir al primer módulo permitido
@@ -420,6 +430,7 @@ export default function App() {
     setNav(params)
     setView(key)
     setNavKey(k => k + 1)
+    guardarRuta(key, params)
   }
 
   // Clic en el menú lateral: entra al módulo limpio
@@ -427,6 +438,7 @@ export default function App() {
     setNav(null)
     setView(key)
     setNavKey(k => k + 1)
+    guardarRuta(key, null)
     if (esMovil()) setMenuAbierto(false)
   }
 
