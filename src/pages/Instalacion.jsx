@@ -150,6 +150,9 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
   }
   const avanceItem = (obra, itemId) =>
     aptosDe(obra).reduce((s, a) => s + avanceEnApto(a, itemId), 0)
+  // El avance real trae decimales, así que se comparan con tolerancia y se muestran cortos
+  const dec = n => Number(n).toLocaleString('es-CO', { maximumFractionDigits: 2 })
+  const cuadra = n => Math.abs(n) < 0.01
 
   const instaladoItem = (obra, itemId) =>
     aptosDe(obra).reduce((s, a) => s + instaladoEnApto(a, itemId), 0)
@@ -641,8 +644,10 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                 const inst  = obra ? instaladoItem(obra, it.id) : 0
                 const avan  = obra ? avanceItem(obra, it.id) : 0   // unidades equivalentes, partes a medias incluidas
                 const fact  = facturadoTorre(it.id)
-                const faltaInst = contr - inst
-                const porFact   = inst - fact
+                // Se miden contra el avance real: la obra abona por lo puesto aunque falte
+                // el remate, así que contar solo lo completo exageraba el faltante.
+                const faltaInst = contr - avan
+                const porFact   = avan - fact
                 const sinMapa   = elsDeItem(it.id).length === 0
                 const prog      = obra ? programadoItem(obra, it.id) : 0
                 const difProg   = prog - contr
@@ -673,12 +678,13 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                     </td>
                     <td style={{ padding: '8px 10px', textAlign: 'right', color: fact > 0 ? C.bk : C.g3 }}>{fact.toLocaleString('es-CO')}</td>
                     <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700,
-                      color: faltaInst === 0 ? C.gnD : faltaInst < 0 ? C.rd : C.or,
-                      background: faltaInst === 0 ? '#DCFCE7' : faltaInst < 0 ? '#FEE2E2' : '#FFF7ED' }}>
-                      {faltaInst === 0 ? '✓ Completo' : faltaInst < 0 ? `Exceso ${Math.abs(faltaInst).toLocaleString('es-CO')}` : faltaInst.toLocaleString('es-CO')}
+                      color: cuadra(faltaInst) ? C.gnD : faltaInst < 0 ? C.rd : C.or,
+                      background: cuadra(faltaInst) ? '#DCFCE7' : faltaInst < 0 ? '#FEE2E2' : '#FFF7ED' }}>
+                      {cuadra(faltaInst) ? '✓ Completo' : faltaInst < 0 ? `Exceso ${dec(Math.abs(faltaInst))}` : dec(faltaInst)}
                     </td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: porFact > 0 ? C.or : C.g4 }}>
-                      {porFact > 0 ? porFact.toLocaleString('es-CO') : '—'}
+                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: porFact > 0.01 ? C.or : porFact < -0.01 ? C.rd : C.g4 }}
+                      title={porFact < -0.01 ? 'Ya se facturó más de lo que va instalado (la obra abonó por adelantado)' : ''}>
+                      {porFact > 0.01 ? dec(porFact) : porFact < -0.01 ? `Adelantado ${dec(Math.abs(porFact))}` : '—'}
                     </td>
                   </tr>
                 )
@@ -702,8 +708,12 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                       {av.toLocaleString('es-CO', { maximumFractionDigits: 2 })}
                     </td>
                     {cel(f, '#F3D3B5')}
-                    {cel(c - i2, '#FDBA74')}
-                    {cel(Math.max(0, i2 - f), '#FDBA74')}
+                    <td style={{ padding: '9px 10px', textAlign: 'right', color: '#FDBA74' }}>
+                      {(c - av).toLocaleString('es-CO', { maximumFractionDigits: 2 })}
+                    </td>
+                    <td style={{ padding: '9px 10px', textAlign: 'right', color: '#FDBA74' }}>
+                      {Math.max(0, av - f).toLocaleString('es-CO', { maximumFractionDigits: 2 })}
+                    </td>
                   </>
                 })()}
               </tr>
