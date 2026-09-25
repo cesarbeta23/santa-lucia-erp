@@ -27,6 +27,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
   const [torreSel, setTorreSel]   = useState('')        // '' = todas las torres
   const [modalReparto, setModalReparto] = useState(false)
   const [repartoTmp, setRepartoTmp]     = useState({})   // { `${itemId}|${obraId}`: cantidad }
+  const [buscaProy, setBuscaProy]       = useState('')   // filtro de la lista de obras
 
   // ── Helpers ───────────────────────────────────────────────
   const contratosInst = contratos.filter(c => TIPOS_INST.includes(c.tipo))
@@ -328,13 +329,39 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
 
   // ── Vista lista de proyectos ──────────────────────────────
   if (vista === 'lista') {
-    const proys = proyectos.filter(p => contratosInst.some(c => c.proyecto_id === p.id))
+    const todosProys = proyectos.filter(p => contratosInst.some(c => c.proyecto_id === p.id))
+    // Busca por nombre de obra, de constructora o de torre
+    const q = buscaProy.trim().toLowerCase()
+    const proys = !q ? todosProys : todosProys.filter(p => {
+      const constr = constructoras.find(x => x.id === p.constructora_id)?.nombre || ''
+      const torres = torresDe(p).map(t => t.nombre).join(' ')
+      return `${p.nombre} ${constr} ${torres}`.toLowerCase().includes(q)
+    })
     return (
       <div>
         <SectionHeader title="🔧 Instalación" />
-        {proys.length === 0 ? (
+        {todosProys.length > 0 && (
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+            <input value={buscaProy} onChange={e => setBuscaProy(e.target.value)}
+              placeholder="Buscar obra, constructora o torre…"
+              style={{ flex: 1, minWidth: 240, maxWidth: 420, padding: '9px 12px', border: `1px solid ${C.g2}`, borderRadius: 8, fontSize: 14, outline: 'none' }} />
+            <select value="" onChange={e => {
+                const p = todosProys.find(x => x.id === e.target.value)
+                if (p) { setProySel(p); setVista('proyecto') }
+              }}
+              style={{ padding: '9px 12px', border: `1px solid ${C.g2}`, borderRadius: 8, fontSize: 14, minWidth: 200, background: 'white' }}>
+              <option value="">Ir directo a una obra…</option>
+              {todosProys.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+            </select>
+            <span style={{ fontSize: 12, color: C.g5 }}>{proys.length} de {todosProys.length}</span>
+          </div>
+        )}
+        {todosProys.length === 0 ? (
           <Empty icon="🔧" title="Sin contratos de instalación"
             desc="Los proyectos aparecen aquí cuando tienen un contrato de instalación o todo costo." />
+        ) : proys.length === 0 ? (
+          <Empty icon="🔍" title="Ninguna obra coincide" desc={`No hay obras que coincidan con "${buscaProy}".`}
+            action={<Btn onClick={() => setBuscaProy('')}>Limpiar búsqueda</Btn>} />
         ) : (
           <div style={{ display: 'grid', gap: 10 }}>
             {proys.map(p => {
