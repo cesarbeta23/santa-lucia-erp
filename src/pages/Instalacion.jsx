@@ -122,6 +122,35 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
   const programadoItem = (obra, itemId) =>
     aptosDe(obra).reduce((s, a) => s + programadoEnApto(a, itemId), 0)
 
+  // ── Avance real (parcial) ─────────────────────────────────
+  // Una puerta puesta sin chapa no es cero trabajo: es la puerta hecha y la chapa
+  // pendiente. Aquí cada parte pesa lo que se le paga al instalador por ella, así que
+  // una unidad con ala+marco puestos y chapa pendiente cuenta como fracción, no como 0.
+  // Si ninguna parte tiene valor cargado, se reparte parejo entre las partes.
+  const pesoParte = p => (Number(p.valor_instalador) || 0) + (Number(p.valor_detallado) || 0)
+  const pesosDeItem = itemId => {
+    const ps = partesDe(itemId).filter(p => p.elemento_id)
+    const total = ps.reduce((s, p) => s + pesoParte(p), 0)
+    const m = {}
+    ps.forEach(p => { m[p.elemento_id] = total > 0 ? pesoParte(p) / total : 1 / (ps.length || 1) })
+    return m
+  }
+
+  // Unidades equivalentes instaladas en un apto, contando lo que va de cada parte.
+  function avanceEnApto(apto, itemId) {
+    const eids = partesEnApto(apto, itemId)
+    if (!eids.length) return 0
+    const todos = elsDelApto(apto)
+    const pesos = pesosDeItem(itemId)
+    return eids.reduce((s, eid) => {
+      const hechas = todos.filter(e => e.elementoId === eid && e.completado)
+        .reduce((x, e) => x + Number(e.cantidad || 1), 0)
+      return s + hechas * (pesos[eid] || 0)
+    }, 0)
+  }
+  const avanceItem = (obra, itemId) =>
+    aptosDe(obra).reduce((s, a) => s + avanceEnApto(a, itemId), 0)
+
   const instaladoItem = (obra, itemId) =>
     aptosDe(obra).reduce((s, a) => s + instaladoEnApto(a, itemId), 0)
 
@@ -600,7 +629,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: '#2B313A' }}>
-                {['REF', 'DESCRIPCIÓN', 'UM', 'CONTRATADO', 'EN OBRA', 'INSTALADO', 'FACTURADO', 'FALTA INSTALAR', 'POR FACTURAR'].map((h, i) => (
+                {['REF', 'DESCRIPCIÓN', 'UM', 'CONTRATADO', 'EN OBRA', 'COMPLETAS', 'AVANCE REAL', 'FACTURADO', 'FALTA INSTALAR', 'POR FACTURAR'].map((h, i) => (
                   <th key={h} style={{ padding: '9px 10px', textAlign: i < 3 ? 'left' : 'right', color: i < 3 ? '#F3D3B5' : '#FCC89B', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -610,6 +639,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                 const contrT = contratadoDe(it)            // null = esta torre no tiene reparto
                 const contr = contrT ?? 0
                 const inst  = obra ? instaladoItem(obra, it.id) : 0
+                const avan  = obra ? avanceItem(obra, it.id) : 0   // unidades equivalentes, partes a medias incluidas
                 const fact  = facturadoTorre(it.id)
                 const faltaInst = contr - inst
                 const porFact   = inst - fact
@@ -636,6 +666,11 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                       {!sinMapa && obra && contrT !== null && difProg !== 0 && <div style={{ fontSize: 10, fontWeight: 700 }}>{difProg > 0 ? `+${difProg}` : difProg} vs {torreSel ? 'lo de la torre' : 'contrato'}</div>}
                     </td>
                     <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: inst > 0 ? C.gnD : C.g3 }}>{inst.toLocaleString('es-CO')}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: avan > inst ? C.or : avan > 0 ? C.gnD : C.g3 }}
+                      title={avan > inst ? `Hay ${(avan - inst).toFixed(2)} unidades con partes puestas que todavía no están completas` : 'Todo lo empezado está completo'}>
+                      {avan > 0 ? avan.toLocaleString('es-CO', { maximumFractionDigits: 2 }) : '—'}
+                      {avan > inst && <div style={{ fontSize: 10, fontWeight: 700 }}>+{(avan - inst).toLocaleString('es-CO', { maximumFractionDigits: 2 })} a medias</div>}
+                    </td>
                     <td style={{ padding: '8px 10px', textAlign: 'right', color: fact > 0 ? C.bk : C.g3 }}>{fact.toLocaleString('es-CO')}</td>
                     <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700,
                       color: faltaInst === 0 ? C.gnD : faltaInst < 0 ? C.rd : C.or,
@@ -658,10 +693,14 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                   const f = its.reduce((s, i) => s + facturadoTorre(i.id), 0)
                   const cel = (v, col) => <td style={{ padding: '9px 10px', textAlign: 'right', color: col }}>{v.toLocaleString('es-CO')}</td>
                   const p = obra ? its.reduce((s, i) => s + programadoItem(obra, i.id), 0) : 0
+                  const av = obra ? its.reduce((s, i) => s + avanceItem(obra, i.id), 0) : 0
                   return <>
                     {cel(c, 'white')}
                     {cel(p, '#FDE68A')}
                     {cel(i2, '#86EFAC')}
+                    <td style={{ padding: '9px 10px', textAlign: 'right', color: '#FDBA74' }}>
+                      {av.toLocaleString('es-CO', { maximumFractionDigits: 2 })}
+                    </td>
                     {cel(f, '#F3D3B5')}
                     {cel(c - i2, '#FDBA74')}
                     {cel(Math.max(0, i2 - f), '#FDBA74')}
@@ -679,7 +718,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
           ? <Empty icon="🏢" title="Sin apartamentos" desc="La obra vinculada no tiene pisos ni apartamentos creados." />
           : <>
             <div style={{ display: 'flex', gap: 14, fontSize: 12, color: C.g5, marginBottom: 8, flexWrap: 'wrap' }}>
-              <span><span style={{ display: 'inline-block', width: 12, height: 12, background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 3, marginRight: 5, verticalAlign: 'middle' }} />Instalando</span>
+              <span><span style={{ display: 'inline-block', width: 12, height: 12, background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 3, marginRight: 5, verticalAlign: 'middle' }} />Falta remate (ej. sin chapa)</span>
               <span><span style={{ display: 'inline-block', width: 12, height: 12, background: '#DCFCE7', border: '1px solid #BBF7D0', borderRadius: 3, marginRight: 5, verticalAlign: 'middle' }} />Instalado completo</span>
               <span><span style={{ display: 'inline-block', width: 12, height: 12, background: '#FED7AA', border: '1px solid #FDBA74', borderRadius: 3, marginRight: 5, verticalAlign: 'middle' }} />Entregado a obra</span>
             </div>
@@ -706,19 +745,26 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                         const { hechas, total, partesHechas, partesTotal } = parcialEnApto(a, it.id)
                         // Completo = todas las unidades y todas las partes (puerta, chapa, tope…)
                         const listo = total > 0 && hechas >= total && partesHechas === partesTotal
+                        // Parcial: hay partes puestas pero todavía no está completo (típico:
+                        // la puerta instalada y la chapa pendiente). No es cero trabajo.
+                        const avApto = avanceEnApto(a, it.id)
+                        const parcial = !listo && total > 0 && avApto > 0
                         const ent = entregaDe(it.id, a.id)
                         const entregado = !!ent?.entregado
                         const fondoEnt = '#FED7AA'   // naranja tenue: ya entregado a obra
                         return [
                           <td key={it.id} title={total === 0 ? '' : `${hechas} de ${total} unidades · ${partesHechas} de ${partesTotal} partes`}
                             style={{ padding: '6px 8px', textAlign: 'center', borderLeft: `2px solid ${C.g2}`,
-                            background: entregado ? fondoEnt : listo ? '#DCFCE7' : hechas > 0 ? '#FFF7ED' : undefined }}>
+                            background: entregado ? fondoEnt : listo ? '#DCFCE7' : parcial ? '#FEF3C7' : undefined }}>
                             {total === 0 ? <span style={{ color: C.g3 }}>—</span>
                               : listo ? <span style={{ color: entregado ? '#9A3412' : C.gnD, fontWeight: 700 }}>✓</span>
-                              : <span style={{ color: hechas > 0 ? C.or : C.g4, fontSize: 11 }}>{hechas}/{total}</span>}
+                              : parcial ? <span style={{ color: '#B45309', fontWeight: 700 }}>
+                                  ✓<span style={{ fontSize: 9, fontWeight: 600, display: 'block', lineHeight: 1 }}>falta remate</span>
+                                </span>
+                              : <span style={{ color: C.g4, fontSize: 11 }}>{hechas}/{total}</span>}
                           </td>,
                           <td key={it.id + 'e'} style={{ padding: '4px 6px', background: entregado ? fondoEnt : undefined, whiteSpace: 'nowrap' }}
-                            title={entregado ? `Entregado a obra${ent.fecha_entrega ? ' el ' + ent.fecha_entrega : ''}${ent.memorando ? ' · memo ' + ent.memorando : ''}` : (listo ? 'Marcar como entregado a obra' : 'Primero debe estar instalado completo')}>
+                            title={entregado ? `Entregado a obra${ent.fecha_entrega ? ' el ' + ent.fecha_entrega : ''}${ent.memorando ? ' · memo ' + ent.memorando : ''}` : (listo ? 'Marcar como entregado a obra' : parcial ? 'Empezado pero sin rematar: falta alguna parte' : 'Primero debe estar instalado completo')}>
                             {total === 0 ? <span style={{ color: C.g3 }}>—</span> : (
                               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                 <input type="checkbox" checked={entregado}
