@@ -107,6 +107,18 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
   const nombreTorre = id => obras.find(o => o.id === id)?.nombre || ''
 
   // torreId vacío = todas las torres del proyecto
+  // Elementos que este ítem NO comparte con otros ítems del mismo contrato. La chapa,
+  // por ejemplo, va en varias puertas: si se usara para decidir si un ítem aplica en un
+  // apto, un apto con chapa pero sin la puerta de reforma daría esa puerta por instalada.
+  const elsPropiosDeItem = (itemContratoId, cid) => {
+    const mios = subitems_instalacion.filter(p => p.item_contrato_id === itemContratoId && p.elemento_id).map(p => p.elemento_id)
+    if (!mios.length) return mios
+    const otrosItems = items_contrato.filter(i => i.contrato_id === cid && i.id !== itemContratoId).map(i => i.id)
+    const otros = new Set(subitems_instalacion.filter(p => otrosItems.includes(p.item_contrato_id) && p.elemento_id).map(p => p.elemento_id))
+    const propios = mios.filter(eid => !otros.has(eid))
+    return propios.length ? propios : mios   // si todo es compartido, no hay con qué distinguir
+  }
+
   const instaladoItem = (itemContratoId, torreId = '') => {
     const it = items_contrato.find(i => i.id === itemContratoId)
     const c = contratos.find(x => x.id === it?.contrato_id)
@@ -115,9 +127,12 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
     if (!torres.length) return 0
     const eids = subitems_instalacion.filter(p => p.item_contrato_id === itemContratoId && p.elemento_id).map(p => p.elemento_id)
     if (!eids.length) return 0
+    const propios = elsPropiosDeItem(itemContratoId, c?.id)
     return torres.flatMap(t => (t.pisos || []).flatMap(p => p.aptos || [])).reduce((s, a) => {
       const todos = [...(a.elementos || []), ...(a.elementosExtra || [])]
-      const presentes = eids.filter(eid => todos.some(e => e.elementoId === eid))
+      const hay = eid => todos.some(e => e.elementoId === eid)
+      if (!propios.some(hay)) return s        // el apto no lleva este ítem
+      const presentes = eids.filter(hay)
       if (!presentes.length) return s
       let min = Infinity
       for (const eid of presentes) {
