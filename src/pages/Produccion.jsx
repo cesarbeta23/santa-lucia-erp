@@ -106,12 +106,20 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
     return its.some(i => despEnLote(lote, i.item_contrato_id) > 0) ? 'en_proceso' : 'pendiente'
   }
 
+  // El avance del lote se mide ítem por ítem y se promedia. No se suman las cantidades
+  // de todos los ítems: mezclaría unidades con metros lineales, y un exceso en uno
+  // taparía lo que falta en los demás (un lote con puertas pendientes marcaba 100%
+  // solo porque del zócalo se había mandado de más).
   const pctLote = (loteId) => {
     const lote = lotes_produccion.find(l => l.id === loteId)
-    const its = items_lote.filter(i => i.lote_id === loteId)
-    const plan = its.reduce((s, i) => s + Number(i.cantidad || 0), 0)
-    const desp = its.reduce((s, i) => s + (lote ? despEnLote(lote, i.item_contrato_id) : 0), 0)
-    return plan > 0 ? (Math.min(desp, plan) / plan) * 100 : 0
+    const its = items_lote.filter(i => i.lote_id === loteId && Number(i.cantidad || 0) > 0)
+    if (!its.length || !lote) return 0
+    const suma = its.reduce((s, i) => {
+      const plan = Number(i.cantidad || 0)
+      const desp = despEnLote(lote, i.item_contrato_id)
+      return s + Math.min(100, (desp / plan) * 100)
+    }, 0)
+    return suma / its.length
   }
 
   // Proyectos con contratos de suministro o todo_costo
