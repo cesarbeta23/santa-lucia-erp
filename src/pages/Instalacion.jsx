@@ -260,12 +260,16 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
   async function guardarPartes() {
     setSaving(true)
     try {
-      const filas = partesTmp.filter(p => p.nombre?.trim())
+      // Una fila cuenta si tiene nombre O si ya se le escogió el elemento de la obra.
+      // Antes se botaban sin avisar las filas con elemento y sin nombre escrito.
+      const filas = partesTmp.filter(p => p.nombre?.trim() || p.elemento_id)
       await supabase.from('subitems_instalacion').delete().eq('item_contrato_id', partesItem.id)
       let nuevas = []
       if (filas.length) {
         const rows = filas.map((p, i) => ({
-          item_contrato_id: partesItem.id, nombre: p.nombre.trim(), unidad: p.unidad || 'und',
+          item_contrato_id: partesItem.id,
+          nombre: p.nombre?.trim() || nombreEl(p.elemento_id),   // sin nombre, se usa el del elemento
+          unidad: p.unidad || 'und',
           valor_instalador: Number(p.valor_instalador) || 0, valor_detallado: Number(p.valor_detallado) || 0,
           elemento_id: p.elemento_id || null, orden: i,   // vacío = se crea al enviar a la obra
         }))
@@ -898,7 +902,11 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                   onChange={e => setPartesTmp(t => t.map((x, j) => j === i ? { ...x, valor_detallado: e.target.value } : x))}
                   style={{ padding: '7px 8px', border: `1px solid ${C.g2}`, borderRadius: 8, fontSize: 13, textAlign: 'right' }} />
                 <select value={p.elemento_id || ''}
-                  onChange={e => setPartesTmp(t => t.map((x, j) => j === i ? { ...x, elemento_id: e.target.value || null } : x))}
+                  onChange={e => setPartesTmp(t => t.map((x, j) => j !== i ? x : {
+                    ...x, elemento_id: e.target.value || null,
+                    // si la parte no tiene nombre, se le pone el del elemento escogido
+                    nombre: x.nombre?.trim() ? x.nombre : (e.target.value ? nombreEl(e.target.value) : x.nombre),
+                  }))}
                   style={{ padding: '7px 8px', border: `1px solid ${C.g2}`, borderRadius: 8, fontSize: 12 }}>
                   <option value="">— crear nuevo al enviar —</option>
                   {elsObra.map(el => <option key={el.id} value={el.id}>{el.nombre}</option>)}
