@@ -252,13 +252,15 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
       if (despachado === 0) return false  // si no hay despachos, no validar
       return Number(it.cantidad || 0) > despachado
     })
+    // Aviso, no bloqueo: la obra a veces aprueba un poco más o un poco menos de lo
+    // que quedó registrado. El acta lleva lo que la obra aprobó; el control fino es
+    // que al final del contrato no quede mucho sin facturar.
     if (excesos.length) {
       const msg = excesos.map(e => {
         const ic = items_contrato.find(i => i.ref === e.ref && i.contrato_id === actaSel.contrato_id)
-        return `• ${e.ref}: intentas facturar ${e.cantidad} pero solo hay ${cantBase(ic?.id)} ${nombreBase(contratoDeItem(ic?.id))}`
+        return `• ${e.ref}: ${e.cantidad} contra ${cantBase(ic?.id)} ${nombreBase(contratoDeItem(ic?.id))}`
       }).join('\n')
-      toast(`No puedes facturar más de lo ${nombreBase(contrato)}:\n${msg}`, 'err')
-      return
+      toast(`Ojo, hay ítems por encima de lo ${nombreBase(contrato)}:\n${msg}`, 'info')
     }
     const { subtotal, iva, total, utilidad } = calcTotales(parsedItems, contrato)
     setSavingItems(true)
@@ -349,10 +351,9 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
     if (excesos2.length) {
       const msg = excesos2.map(e => {
         const ic = items_contrato.find(i => i.ref === e.ref && i.contrato_id === actaSel.contrato_id)
-        return `• ${e.ref}: intentas facturar ${e.cantidad} pero solo hay ${cantBase(ic?.id)} ${nombreBase(contratoDeItem(ic?.id))}`
+        return `• ${e.ref}: ${e.cantidad} contra ${cantBase(ic?.id)} ${nombreBase(contratoDeItem(ic?.id))}`
       }).join('\n')
-      toast(`No puedes facturar más de lo ${nombreBase(contrato)}:\n${msg}`, 'err')
-      return
+      toast(`Ojo, hay ítems por encima de lo ${nombreBase(contrato)}:\n${msg}`, 'info')
     }
     const { subtotal, iva, total, utilidad } = calcTotales(validos, contrato)
     setSavingItems(true)
