@@ -241,13 +241,117 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
     }).filter(x => x.saldo !== 0)
   }
 
+  // A dónde va el saldo de un lote, en orden:
+  //  1) los lotes abiertos que siguen EN SU MISMA TORRE;
+  //  2) si ahí se acaba, los lotes abiertos de las torres siguientes.
+  // Lo segundo pasa cuando producción adelanta material de la torre que viene
+  // (p. ej. se corrió más zócalo aprovechando el montaje). El contrato es uno solo,
+  // así que el material no se pierde: se descuenta del plan de la otra torre.
+  // Ojo: se filtra por la torre DEL LOTE, no por la que esté seleccionada en pantalla.
   function siguientesAbiertos(lote) {
-    return lotesContrato(lote.contrato_id).filter(l => l.numero > lote.numero && l.estado !== 'completado')
+    const tLote = multi ? torreDe(lote) : ''
+    const abiertos = l => l.estado !== 'completado'
+    const propios = lotesContrato(lote.contrato_id, tLote).filter(l => l.numero > lote.numero && abiertos(l))
+    if (!multi) return propios
+    const iTorre = torres.findIndex(t => t.id === tLote)
+    const otras = torres.slice(iTorre + 1).flatMap(t =>
+      lotesContrato(lote.contrato_id, t.id).filter(abiertos))
+    return [...propios, ...otras]
+  }
+  // Nombre a mostrar del destino: si es de otra torre, se dice de cuál
+  const destinoLabel = (lote, dest) => {
+    if (!dest) return ''
+    if (!multi || torreDe(dest) === torreDe(lote)) return dest.nombre
+    return `${dest.nombre} de ${torres.find(t => t.id === torreDe(dest))?.nombre || 'la otra torre'}`
   }
 
   function pedirCierre(lote) {
     if (saldosLote(lote).length === 0) { cambiarEstado(lote.id, 'completado'); return }
     setModalCierre({ lote, soloAjuste: false })
+  }
+
+  // ── Pasar material despachado de una torre a la siguiente ──
+  // Caso real: una misma remisión sale con material de la Torre 1 y de la Torre 2 (se
+  // corrió de más aprovechando el montaje). Aquí se parte esa remisión: la cantidad de
+  // más se le resta a la remisión de la torre de origen y se crea su gemela en la torre
+  // destino, con el mismo número y una nota de dónde viene.
+  // Lo que NO cambia: el plan de los lotes de la torre destino, su contratado, ni la
+  // suma del contrato. El excedente simplemente pasa a contar como despacho de esa torre.
+  async function moverDespachoDeTorre(loteOrigen, loteDestino, movs) {
+    const tOrigen  = torreDe(loteOrigen)
+    const tDestino = torreDe(loteDestino)
+    const nomOrigen = torres.find(t => t.id === tOrigen)?.nombre || 'la otra torre'
+    // Remisiones de la torre de origen, de la más reciente hacia atrás
+    const remsOrigen = remisiones
+      .filter(r => r.contrato_id === loteOrigen.contrato_id && torreDe(r) === tOrigen)
+      .sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')))
+
+    const porRemision = {}    // remision_id → [{ itemId, cantidad }]
+    const bajas = []          // items_remision que quedan con menos cantidad
+    for (const mv of movs) {
+      let falta = mv.cantidad
+      for (const r of remsOrigen) {
+        if (falta <= 0) break
+        const ir = items_remision.find(i => i.remision_id === r.id && i.item_contrato_id === mv.itemId)
+        const disp = Number(ir?.cantidad || 0) - (bajas.find(b => b.id === ir?.id)?.quitado || 0)
+        if (!ir || disp <= 0) continue
+        const quita = Math.min(falta, disp)
+        const ya = bajas.find(b => b.id === ir.id)
+        if (ya) ya.quitado += quita
+        else bajas.push({ id: ir.id, original: Number(ir.cantidad || 0), quitado: quita })
+        ;(porRemision[r.id] ||= []).push({ itemId: mv.itemId, cantidad: quita })
+        falta -= quita
+      }
+    }
+    if (!bajas.length) { toast('No se encontró la remisión de donde salió ese excedente', 'err'); return }
+
+    // 1) Bajar la cantidad en la remisión de origen (o borrar la línea si queda en cero)
+    const irActualizados = [], irBorrados = []
+    for (const b of bajas) {
+      const resto = b.original - b.quitado
+      if (resto > 0) {
+        const { data, error } = await supabase.from('items_remision').update({ cantidad: resto }).eq('id', b.id).select().single()
+        if (error) throw error
+        irActualizados.push(data)
+      } else {
+        const { error } = await supabase.from('items_remision').delete().eq('id', b.id)
+        if (error) throw error
+        irBorrados.push(b.id)
+      }
+    }
+    // 2) Crear la remisión gemela en la torre destino, una por cada remisión de origen
+    const remsNuevas = [], irNuevos = []
+    for (const [remId, lineas] of Object.entries(porRemision)) {
+      const orig = remisiones.find(r => r.id === remId)
+      const { data: rem, error } = await supabase.from('remisiones').insert({
+        proyecto_id: orig.proyecto_id,
+        contrato_id: orig.contrato_id,
+        numero: orig.numero,
+        fecha: orig.fecha,
+        transportador: orig.transportador || null,
+        notas: `Parte de la remisión ${orig.numero} que salió para ${nomOrigen}${orig.notas ? ` · ${orig.notas}` : ''}`,
+        lote_id: loteDestino.id,
+        obra_id: tDestino,
+      }).select().single()
+      if (error) throw error
+      remsNuevas.push(rem)
+      for (const l of lineas) {
+        const { data, error: e2 } = await supabase.from('items_remision')
+          .insert({ remision_id: rem.id, item_contrato_id: l.itemId, cantidad: l.cantidad }).select().single()
+        if (e2) throw e2
+        irNuevos.push(data)
+      }
+    }
+    setDbData(d => ({
+      ...d,
+      remisiones: [...d.remisiones, ...remsNuevas],
+      items_remision: [
+        ...d.items_remision
+          .filter(i => !irBorrados.includes(i.id))
+          .map(i => irActualizados.find(a => a.id === i.id) || i),
+        ...irNuevos,
+      ],
+    }))
   }
 
   // soloExcesos: solo ajusta lo que se despachó de más; lo que falta se deja
@@ -264,24 +368,43 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
           if (!il) return { il: null, cant: 0 }
           return { il, cant: cambios[il.id] ?? Number(il.cantidad || 0) }
         }
+        // Dentro de la MISMA torre el saldo se mueve cambiando el plan de los lotes.
+        // Hacia OTRA torre no: ahí lo que hubo fue una remisión que llevó material de
+        // las dos torres. Ese excedente se reparte como despacho de la torre destino —
+        // su plan, su contratado y la suma del contrato quedan iguales (ver moverDespacho).
+        const tLote = multi ? torreDe(lote) : ''
+        const sigsPropios = sigs.filter(l => !multi || torreDe(l) === tLote)
+        const sigsOtras   = sigs.filter(l => multi && torreDe(l) !== tLote)
+        const aOtraTorre  = []   // { itemId, cantidad } que se pasan a la torre siguiente
+
         for (const s of saldosLote(lote).filter(x => !soloExcesos || x.saldo < 0)) {
-          cambios[s.il.id] = s.desp
           const itemId = s.il.item_contrato_id
           if (s.saldo > 0) {
-            const { il, cant } = cantDe(sigs[0].id, itemId)
+            // Faltó: solo se mueve dentro de la misma torre. Un faltante de esta torre
+            // no se tapa quitándole plan a la siguiente.
+            if (!sigsPropios.length) continue
+            cambios[s.il.id] = s.desp
+            const { il, cant } = cantDe(sigsPropios[0].id, itemId)
             if (il) cambios[il.id] = cant + s.saldo
-            else nuevos.push({ lote_id: sigs[0].id, item_contrato_id: itemId, cantidad: s.saldo })
-          } else {
-            let exceso = -s.saldo
-            for (const sl of sigs) {
-              if (exceso <= 0) break
-              const { il, cant } = cantDe(sl.id, itemId)
-              if (!il || cant <= 0) continue
-              const quita = Math.min(exceso, cant)
-              cambios[il.id] = cant - quita
-              exceso -= quita
-            }
+            else nuevos.push({ lote_id: sigsPropios[0].id, item_contrato_id: itemId, cantidad: s.saldo })
+            continue
           }
+          // Sobró: primero se absorbe en los lotes que siguen en esta torre…
+          let exceso = -s.saldo
+          let absorbido = 0
+          for (const sl of sigsPropios) {
+            if (exceso <= 0) break
+            const { il, cant } = cantDe(sl.id, itemId)
+            if (!il || cant <= 0) continue
+            const quita = Math.min(exceso, cant)
+            cambios[il.id] = cant - quita
+            exceso -= quita; absorbido += quita
+          }
+          // El lote sube su plan solo por lo que se absorbió aquí; lo que se va a otra
+          // torre no le pertenece a este lote y por eso no entra en su plan.
+          if (absorbido > 0) cambios[s.il.id] = s.plan + absorbido
+          // …y lo que quede se pasa a la torre siguiente como despacho de esa torre.
+          if (exceso > 0 && sigsOtras.length) aOtraTorre.push({ itemId, cantidad: exceso })
         }
         const actualizados = []
         for (const [id, cantidad] of Object.entries(cambios)) {
@@ -302,6 +425,7 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
             ...insertados,
           ],
         }))
+        if (aOtraTorre.length) await moverDespachoDeTorre(lote, sigsOtras[0], aOtraTorre)
       }
       if (cerrar) await cambiarEstado(lote.id, 'completado')
       toast(cerrar
@@ -519,6 +643,7 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
           const { lote: loteM, soloAjuste } = modalCierre
           const saldos = saldosLote(loteM)
           const sigs   = siguientesAbiertos(loteM)
+          const otraTorre = multi && sigs.length > 0 && torreDe(sigs[0]) !== torreDe(loteM)
           return (
             <Modal title={soloAjuste ? `Pasar saldo de ${loteM.nombre}` : `Completar ${loteM.nombre}`} onClose={() => setModalCierre(null)} wide>
               <p style={{ fontSize: 13, color: C.g5, marginBottom: 12 }}>
@@ -555,12 +680,17 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
               {sigs.length > 0 ? (
                 <div style={{ background: '#EFF6FF', border: '1px solid #F3D3B5', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#2B313A', marginBottom: 16 }}>
                   {soloAjuste
-                    ? <>Los excesos se descuentan de <strong>{sigs[0].nombre}</strong> y, si no alcanza, de los lotes que siguen.</>
-                    : <>Si pasas el saldo: este lote queda con lo que realmente se despachó, lo que faltó se suma a <strong>{sigs[0].nombre}</strong> y los excesos se descuentan de los lotes siguientes.</>}
+                    ? <>Los excesos se descuentan de <strong>{destinoLabel(loteM, sigs[0])}</strong> y, si no alcanza, de los lotes que siguen.</>
+                    : <>Si pasas el saldo: este lote queda con lo que realmente se despachó, lo que faltó se suma a <strong>{destinoLabel(loteM, sigs[0])}</strong> y los excesos se descuentan de los lotes siguientes.</>}
+                  {otraTorre && (
+                    <div style={{ marginTop: 6, color: '#9A3412', fontWeight: 600 }}>
+                      ↪ El excedente pasa a {torres.find(t => t.id === torreDe(sigs[0]))?.nombre}: se parte la remisión y esa cantidad queda como despacho de esa torre, con nota de dónde salió. El plan, el contratado y el total de esa torre no cambian.
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div style={{ background: C.rdL, border: '1px solid #FECACA', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: C.rd, marginBottom: 16 }}>
-                  ⚠️ No hay lotes abiertos después de este. El saldo queda pendiente en la columna "Falta despachar".
+                  ⚠️ No hay lotes abiertos después de este, ni en esta torre ni en las que siguen. El saldo queda pendiente en la columna "Falta despachar".
                 </div>
               )}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
@@ -568,7 +698,7 @@ export default function Produccion({ dbData, setDbData, toast, nav, irA, puedeEd
                 {!soloAjuste && <Btn onClick={() => completarLote(loteM, false)} disabled={saving}>Solo completar</Btn>}
                 {sigs.length > 0 && (
                   <Btn variant="primary" onClick={() => completarLote(loteM, true, !soloAjuste, soloAjuste)} disabled={saving}>
-                    {saving ? 'Guardando…' : soloAjuste ? `Pasar excesos a ${sigs[0].nombre}` : `Completar y pasar saldo a ${sigs[0].nombre}`}
+                    {saving ? 'Guardando…' : soloAjuste ? `Pasar excesos a ${destinoLabel(loteM, sigs[0])}` : `Completar y pasar saldo a ${destinoLabel(loteM, sigs[0])}`}
                   </Btn>
                 )}
               </div>
