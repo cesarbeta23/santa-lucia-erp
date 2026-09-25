@@ -66,11 +66,28 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
   // Cuenta los elementos del apto y los de sus tipologías extra
   const elsDelApto = apto => [...(apto.elementos || []), ...(apto.elementosExtra || [])]
 
+  // Elementos que este ítem comparte con otros ítems del mismo contrato (la chapa, por
+  // ejemplo, es la misma para todas las puertas). No sirven para decidir si un ítem
+  // aplica en un apto: si lo hicieran, un apto con chapa pero sin la puerta de reforma
+  // daría esa puerta por instalada.
+  const elsPropiosDeItem = itemId => {
+    const mios = elsDeItem(itemId)
+    if (!mios.length) return mios
+    const cid = items_contrato.find(i => i.id === itemId)?.contrato_id
+    const otros = new Set(items_contrato
+      .filter(i => i.contrato_id === cid && i.id !== itemId)
+      .flatMap(i => elsDeItem(i.id)))
+    const propios = mios.filter(eid => !otros.has(eid))
+    return propios.length ? propios : mios   // si todo es compartido, no hay con qué distinguir
+  }
+
   // Partes del ítem que de verdad lleva ESTE apto según su tipología en Gestión de Obras.
-  // Si el apto no tiene ninguna, el ítem no aplica para él.
+  // Si el apto no tiene ninguna de las partes propias del ítem, el ítem no aplica para él.
   const partesEnApto = (apto, itemId) => {
     const todos = elsDelApto(apto)
-    return elsDeItem(itemId).filter(eid => todos.some(e => e.elementoId === eid))
+    const hay = eid => todos.some(e => e.elementoId === eid)
+    if (!elsPropiosDeItem(itemId).some(hay)) return []
+    return elsDeItem(itemId).filter(hay)
   }
   const aplicaEnApto = (apto, itemId) => partesEnApto(apto, itemId).length > 0
 
