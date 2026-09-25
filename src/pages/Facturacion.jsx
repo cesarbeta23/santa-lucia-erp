@@ -153,7 +153,41 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
   const esInstalacion = c => c?.tipo === 'instalacion'
   const contratoDeItem = itemId => contratos.find(c => c.id === items_contrato.find(i => i.id === itemId)?.contrato_id)
   // Lo que se puede facturar: en suministro lo despachado, en instalación lo instalado
-  const cantBase = (itemId, torreId = '') => esInstalacion(contratoDeItem(itemId)) ? instaladoItem(itemId, torreId) : cantDespachada(itemId, torreId)
+  // ── Avance real (parcial) ─────────────────────────────────
+  // Igual que en Instalación: cada parte pesa lo que se le paga al instalador, así que
+  // una puerta puesta sin chapa cuenta como fracción y no como cero. Las obras abonan
+  // por ese avance, así que es la base para facturar.
+  const pesoParte = p => (Number(p.valor_instalador) || 0) + (Number(p.valor_detallado) || 0)
+  const pesosDeItem = itemContratoId => {
+    const ps = subitems_instalacion.filter(p => p.item_contrato_id === itemContratoId && p.elemento_id)
+    const total = ps.reduce((s, p) => s + pesoParte(p), 0)
+    const m = {}
+    ps.forEach(p => { m[p.elemento_id] = total > 0 ? pesoParte(p) / total : 1 / (ps.length || 1) })
+    return m
+  }
+  const avanceItem = (itemContratoId, torreId = '') => {
+    const it = items_contrato.find(i => i.id === itemContratoId)
+    const c = contratos.find(x => x.id === it?.contrato_id)
+    const proy = proyectos.find(p => p.id === c?.proyecto_id)
+    const torres = torresDe(proy).filter(t => !torreId || t.id === torreId)
+    if (!torres.length) return 0
+    const eids = subitems_instalacion.filter(p => p.item_contrato_id === itemContratoId && p.elemento_id).map(p => p.elemento_id)
+    if (!eids.length) return 0
+    const propios = elsPropiosDeItem(itemContratoId, c?.id)
+    const pesos = pesosDeItem(itemContratoId)
+    return torres.flatMap(t => (t.pisos || []).flatMap(p => p.aptos || [])).reduce((s, a) => {
+      const todos = [...(a.elementos || []), ...(a.elementosExtra || [])]
+      const hay = eid => todos.some(e => e.elementoId === eid)
+      if (!propios.some(hay)) return s
+      return s + eids.filter(hay).reduce((x, eid) => {
+        const hechas = todos.filter(e => e.elementoId === eid && e.completado)
+          .reduce((y, e) => y + Number(e.cantidad || 1), 0)
+        return x + hechas * (pesos[eid] || 0)
+      }, 0)
+    }, 0)
+  }
+  // Base para facturar: en instalación es el avance real; en suministro, lo despachado.
+  const cantBase = (itemId, torreId = '') => esInstalacion(contratoDeItem(itemId)) ? avanceItem(itemId, torreId) : cantDespachada(itemId, torreId)
   const nombreBase = c => esInstalacion(c) ? 'instalado' : 'despachado'
 
   // Utilidad e IVA según cómo maneje la constructora la utilidad (ver lib/impuestos.js)
@@ -336,10 +370,17 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
       setDbData(d => ({ ...d, actas_facturacion: [...d.actas_facturacion, cr] }))
       setActaSel(cr); setVista('acta')
       // Se abre la carga manual con lo pendiente ya puesto, para ajustar antes de guardar
-      setItemsManual(pendientes.map(({ it, xf }) => ({
-        ref: it.ref, descripcion: it.descripcion, unidad: it.unidad,
-        cantidad: xf > 0 ? String(xf) : '', vr_unitario_sin_iva: it.vr_unitario || '',
-      })))
+      // Lo que se propone en el acta: en unidades enteras (und, un) no tiene sentido
+      // facturar fracciones, así que se redondea hacia abajo. En ml o m2 sí van decimales.
+      const enteras = u => ['und', 'un', 'unidad', 'uds'].includes(String(u || '').trim().toLowerCase())
+      const propuesto = (xf, u) => enteras(u) ? Math.floor(xf) : Math.round(xf * 100) / 100
+      setItemsManual(pendientes.map(({ it, xf }) => {
+        const v = propuesto(xf, it.unidad)
+        return {
+          ref: it.ref, descripcion: it.descripcion, unidad: it.unidad,
+          cantidad: v > 0 ? String(v) : '', vr_unitario_sin_iva: it.vr_unitario || '',
+        }
+      }))
       setTimeout(() => setModalManual(true), 150)
       toast(`Acta ${siguiente} creada con lo pendiente. Revisá y guardá.`, 'ok')
     } catch (e) { toast('Error: ' + e.message, 'err') }
@@ -630,16 +671,18 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 600 }}>
                           <thead>
                             <tr style={{ background: C.g0 }}>
-                              {['Ref','Descripción','UM','Contrato', esInstalacion(contrato) ? 'Instalado' : 'Despachado','Facturado','X Facturar', esInstalacion(contrato) ? 'Falta instalar' : 'Faltante envío'].map((h,i) => (
+                              {['Ref','Descripción','UM','Contrato', ...(esInstalacion(contrato) ? ['Completas','Avance real'] : ['Despachado']),'Facturado','X Facturar', esInstalacion(contrato) ? 'Falta instalar' : 'Faltante envío'].map((h,i) => (
                                 <th key={i} style={{ padding:'8px 10px', textAlign:i>2?'right':'left', fontSize:10, fontWeight:700, color:C.g5, textTransform:'uppercase', letterSpacing:'.06em', borderBottom:`2px solid ${C.g2}`, whiteSpace:'nowrap',
-                                  ...(h==='X Facturar'?{color:C.or}:h==='Facturado'?{color:C.bl}:(h==='Despachado'||h==='Instalado')?{color:C.gnD}:{}) }}>{h}</th>
+                                  ...(h==='X Facturar'?{color:C.or}:h==='Facturado'?{color:C.bl}:(h==='Despachado'||h==='Avance real')?{color:C.gnD}:h==='Completas'?{color:C.g5}:{}) }}>{h}</th>
                               ))}
                             </tr>
                           </thead>
                           <tbody>
                             {itsContr.map(it => {
                               const contratado2 = Number(it.cantidad||0)
-                              const desp3 = cantBase(it.id, tF)
+                              const desp3 = cantBase(it.id, tF)                    // avance real (o despachado)
+                              const compl3 = esInstalacion(contrato) ? instaladoItem(it.id, tF) : null   // unidades rematadas
+                              const d2 = n => Number(n).toLocaleString('es-CO', { maximumFractionDigits: 2 })
                               const fact3 = factItem(it.id, tF)
                               const xf3   = Math.max(0, desp3 - fact3)
                               const falt3 = Math.max(0, contratado2 - desp3)
@@ -649,10 +692,15 @@ export default function Facturacion({ dbData, setDbData, toast, user, nav, irA }
                                   <td style={{ padding:'7px 10px', maxWidth:260, fontSize:11 }}>{it.descripcion}</td>
                                   <td style={{ padding:'7px 10px', textAlign:'right', color:C.g5 }}>{it.unidad}</td>
                                   <td style={{ padding:'7px 10px', textAlign:'right' }}>{contratado2.toLocaleString('es-CO')}</td>
-                                  <td style={{ padding:'7px 10px', textAlign:'right', color:C.gnD, fontWeight:600 }}>{desp3.toLocaleString('es-CO')}</td>
-                                  <td style={{ padding:'7px 10px', textAlign:'right', color:C.bl }}>{fact3.toLocaleString('es-CO')}</td>
-                                  <td style={{ padding:'7px 10px', textAlign:'right', fontWeight:xf3>0?700:400, color:xf3>0?C.or:C.g4 }}>{xf3.toLocaleString('es-CO')}</td>
-                                  <td style={{ padding:'7px 10px', textAlign:'right', color:falt3>0?C.am:C.gnD }}>{falt3.toLocaleString('es-CO')}</td>
+                                  {compl3 !== null && (
+                                    <td style={{ padding:'7px 10px', textAlign:'right', color:C.g5 }}
+                                      title="Unidades con todas sus partes puestas (listas para entregar)">{d2(compl3)}</td>
+                                  )}
+                                  <td style={{ padding:'7px 10px', textAlign:'right', color:C.gnD, fontWeight:600 }}
+                                    title={compl3 !== null && desp3 > compl3 ? `Incluye ${d2(desp3 - compl3)} de unidades a medias (falta remate)` : ''}>{d2(desp3)}</td>
+                                  <td style={{ padding:'7px 10px', textAlign:'right', color:C.bl }}>{d2(fact3)}</td>
+                                  <td style={{ padding:'7px 10px', textAlign:'right', fontWeight:xf3>0?700:400, color:xf3>0?C.or:C.g4 }}>{d2(xf3)}</td>
+                                  <td style={{ padding:'7px 10px', textAlign:'right', color:falt3>0?C.am:C.gnD }}>{d2(falt3)}</td>
                                 </tr>
                               )
                             })}
