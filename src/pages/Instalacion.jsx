@@ -413,7 +413,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
           <Empty icon="🔍" title="Ninguna obra coincide" desc={`No hay obras que coincidan con "${buscaProy}".`}
             action={<Btn onClick={() => setBuscaProy('')}>Limpiar búsqueda</Btn>} />
         ) : (
-          <div style={{ display: 'grid', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px,1fr))', gap: 12 }}>
             {proys.map(p => {
               const cs    = contratosInst.filter(c => c.proyecto_id === p.id)
               const obra  = obraDe(p)
@@ -422,18 +422,18 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
               const inst  = obra ? its.reduce((s, i) => s + instaladoItem(obra, i.id), 0) : 0
               const pct   = contr > 0 ? Math.min(100, inst / contr * 100) : 0
               return (
-                <div key={p.id} style={{ ...card, padding: '14px 18px', cursor: 'pointer' }}
+                <div key={p.id} style={{ ...card, cursor: 'pointer', borderLeft: `4px solid ${C.or}` }}
+                  onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,.1)'}
+                  onMouseLeave={e => e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,.06)'}
                   onClick={() => { setProySel(p); setVista('proyecto') }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <div>
-                      <div style={{ fontWeight: 700 }}>{p.nombre}</div>
-                      <div style={{ fontSize: 12, color: C.g5 }}>
-                        {constructoras.find(x => x.id === p.constructora_id)?.nombre} · {cs.length} contrato(s)
-                      </div>
-                    </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 4 }}>
+                    <div style={{ fontWeight: 700, fontSize: 15 }}>{p.nombre}</div>
                     {obra
-                      ? <Badge color="green">Obra vinculada</Badge>
+                      ? <Badge color="green">Vinculada</Badge>
                       : <Badge color="amber">Sin vincular</Badge>}
+                  </div>
+                  <div style={{ fontSize: 12, color: C.g5, marginBottom: 10 }}>
+                    🏢 {constructoras.find(x => x.id === p.constructora_id)?.nombre || '—'} · {cs.length} contrato(s)
                   </div>
                   <Progress value={pct} />
                   <div style={{ fontSize: 11, color: C.g5, marginTop: 4 }}>
