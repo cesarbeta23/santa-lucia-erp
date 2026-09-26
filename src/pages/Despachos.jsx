@@ -141,7 +141,11 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
   .page { padding: 28px 32px; max-width: 900px; margin: 0 auto; }
 
   /* CABECERA */
-  .header { background: #1F3A5F; color: white; padding: 18px 24px; border-radius: 8px 8px 0 0; }
+  .header { background: #1F3A5F; color: white; padding: 18px 24px; border-radius: 8px 8px 0 0;
+            display: flex; align-items: center; gap: 14px; }
+  /* El logo va sobre un recuadro blanco porque la imagen tiene fondo claro */
+  .logo-box { background: #fff; border-radius: 6px; padding: 5px 7px; flex-shrink: 0; line-height: 0; }
+  .logo-box img { height: 64px; display: block; }
   .header h1 { font-size: 18px; font-weight: 800; letter-spacing: -.02em; margin-bottom: 2px; }
   .header p  { font-size: 11px; color: #FCC89B; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
   .subheader { background: #23272E; padding: 10px 24px; border-radius: 0 0 8px 8px; margin-bottom: 20px;
@@ -200,8 +204,11 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
 
   <!-- Cabecera -->
   <div class="header">
-    <h1>🪵 ${emp.empresa}</h1>
-    <p>Informe de Cobro — Pendiente por Facturar</p>
+    <div class="logo-box"><img src="${window.location.origin}/logo.jpg" alt="" onerror="this.parentNode.remove()"></div>
+    <div>
+      <h1>${emp.empresa}</h1>
+      <p>Informe de Cobro — Pendiente por Facturar</p>
+    </div>
   </div>
   <div class="subheader">
     <div class="info-item"><span class="info-label">Constructora</span><span class="info-value">${payload.constructora || '—'}</span></div>

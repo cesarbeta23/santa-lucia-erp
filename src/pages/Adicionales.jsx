@@ -141,7 +141,7 @@ export default function Adicionales({ dbData, setDbData, toast, nav, irA, puedeE
     const $ = n => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n || 0)
     const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Cobro adicionales ${proySel.nombre}</title>
 <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;color:#1a1a2e}.page{padding:28px 32px}
-.header{background:#1F3A5F;color:white;padding:18px 24px;border-radius:8px 8px 0 0}.header h1{font-size:18px;font-weight:800;margin-bottom:2px}
+.header{background:#1F3A5F;color:white;padding:18px 24px;border-radius:8px 8px 0 0;display:flex;align-items:center;gap:14px}.logo-box{background:#fff;border-radius:6px;padding:5px 7px;flex-shrink:0;line-height:0}.logo-box img{height:64px;display:block}.header h1{font-size:18px;font-weight:800;margin-bottom:2px}
 .header p{font-size:11px;color:#FCC89B;font-weight:600;text-transform:uppercase;letter-spacing:.06em}
 .sub{background:#23272E;padding:10px 24px;border-radius:0 0 8px 8px;margin-bottom:20px;display:flex;gap:32px;flex-wrap:wrap}
 .l{font-size:9px;color:#64748B;text-transform:uppercase;letter-spacing:.08em;margin-bottom:2px}.v{font-size:12px;color:white;font-weight:700}
@@ -152,7 +152,7 @@ tbody td{padding:8px 10px;border:1px solid #E2E8F0;font-size:10px}tbody tr:nth-c
 .firmas{display:flex;gap:40px;margin-top:48px}.firma{flex:1;border-top:1px solid #94A3B8;padding-top:6px;font-size:10px;color:#475569;text-align:center}
 @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.np{display:none}}</style></head><body><div class="page">
 <div class="np" style="text-align:right;margin-bottom:16px"><button onclick="window.print()" style="background:#2B313A;color:white;border:none;padding:10px 24px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer">🖨️ Guardar / Imprimir PDF</button></div>
-<div class="header"><h1>🪵 ${emp.empresa}</h1><p>Cuenta de cobro — Adicionales de obra</p></div>
+<div class="header"><div class="logo-box"><img src="${window.location.origin}/logo.jpg" alt="" onerror="this.parentNode.remove()"></div><div><h1>${emp.empresa}</h1><p>Cuenta de cobro — Adicionales de obra</p></div></div>
 <div class="sub">
 <div><div class="l">Constructora</div><div class="v">${constr?.nombre || '—'}</div></div>
 <div><div class="l">Proyecto</div><div class="v">${proySel.nombre}</div></div>
