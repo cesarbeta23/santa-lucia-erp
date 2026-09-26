@@ -266,6 +266,13 @@ export const fmt = n =>
 
 export const fmtDate = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('es-CO') : '—'
 
+// ── Orden alfabético ───────────────────────────────────────
+// No distingue mayúsculas ni tildes, y lee los números como números:
+// así Torre 2 va antes que Torre 10, y "Ávila" queda junto a "Avila".
+export const cmpTxt = (a, b) => String(a ?? '').localeCompare(String(b ?? ''), 'es', { numeric: true, sensitivity: 'base' })
+export const porNombre = (a, b) => cmpTxt(a?.nombre, b?.nombre)
+export const ordNom = xs => [...(xs || [])].sort(porNombre)
+
 // ── Hook toast ─────────────────────────────────────────────
 export function useToast() {
   const [toasts, setToasts] = window.__toastState || [[], () => {}]

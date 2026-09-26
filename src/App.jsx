@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { C, Btn, Inp, Toast, fmt } from './components/UI.jsx'
+import { C, Btn, Inp, Toast, fmt, porNombre } from './components/UI.jsx'
 import { supabase, setAccessToken } from './lib/supabase.js'
 import { apiUrl } from './lib/api.js'
 
@@ -405,8 +405,13 @@ export default function App() {
       if (results.some(r => r.error && /jwt|token/i.test(r.error.message || ''))) {
         logout(); toast('Tu sesión venció, vuelve a ingresar', 'info'); return
       }
+      // Las listas de nombres se guardan ya ordenadas alfabéticamente, para que
+      // todos los desplegables de la app salgan en el mismo orden sin tener que
+      // ordenar en cada pantalla. Las demás tablas (ítems, remisiones, actas)
+      // conservan su orden, que ahí sí significa algo.
+      const POR_NOMBRE = ['constructoras', 'proyectos', 'obras', 'usuarios', 'elementos', 'proveedores']
       const newData = {}
-      results.forEach(({ t, data }) => { newData[t] = data })
+      results.forEach(({ t, data }) => { newData[t] = POR_NOMBRE.includes(t) ? [...data].sort(porNombre) : data })
       setDbData(newData)
     } catch (e) {
       toast('Error cargando datos: ' + e.message, 'err')

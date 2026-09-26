@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { C, Btn, Sel, Badge, Empty, SectionHeader, card, fmt, Progress, Modal, Stat } from '../components/UI.jsx'
+import { C, Btn, Sel, Badge, Empty, SectionHeader, card, fmt, Progress, Modal, Stat, porNombre } from '../components/UI.jsx'
 import { supabase } from '../lib/supabase.js'
 
 const TIPOS_INST = ['instalacion', 'todo_costo']
@@ -270,7 +270,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
   // Elementos que se pueden enlazar: los de esta obra y los generales de siempre
   const elsObra = elementos
     .filter(el => el.activo !== false && (!el.obra_id || torresDe(proySel).some(t => t.id === el.obra_id)))
-    .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''))
+    .sort(porNombre)
 
   // Copia el desglose de otro ítem, cambiando el prefijo del nombre.
   // Ej: "P-01 ala y marco" al copiarlo a P-02 queda "P-02 ala y marco".
