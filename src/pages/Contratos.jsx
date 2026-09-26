@@ -1,6 +1,6 @@
 import { callClaudeStream } from '../lib/api.js'
 import * as XLSX from 'xlsx'
-import { totalesContrato, etiquetaIva, MODOS_UTILIDAD } from '../lib/impuestos.js'
+import { totalesContrato, etiquetaIva, MODOS_UTILIDAD, utilidadPct } from '../lib/impuestos.js'
 import { useState, useRef, useEffect } from 'react'
 import { C, Btn, Inp, Sel, Txt, Modal, Badge, Empty, SectionHeader, card, fmt, fmtDate, Progress } from '../components/UI.jsx'
 import { supabase } from '../lib/supabase.js'
@@ -9,7 +9,7 @@ const emptyContrato = {
   proyecto_id: '', numero: '', tipo: 'suministro',
   valor_total: '', fecha_inicio: '', fecha_fin: '',
   iva_incluido: true, factor_iva: 1.19, estado: 'vigente', notas: '',
-  pct_utilidad: 10, modo_utilidad: 'iva_sobre_utilidad',
+  pct_utilidad: null, modo_utilidad: 'iva_sobre_utilidad',   // null = usa la utilidad por defecto de Configuración
 }
 
 const TIPOS = {
@@ -159,7 +159,7 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
       ...form,
       valor_total: Number(String(form.valor_total).replace(/[^0-9.]/g, '')) || 0,
       factor_iva: form.tipo === 'instalacion' ? 1.019 : 1.19,
-      pct_utilidad: form.pct_utilidad === '' || form.pct_utilidad === null || form.pct_utilidad === undefined ? 10 : Number(form.pct_utilidad),
+      pct_utilidad: form.pct_utilidad === '' || form.pct_utilidad === null || form.pct_utilidad === undefined ? utilidadPct() : Number(form.pct_utilidad),
       modo_utilidad: form.modo_utilidad || 'iva_sobre_utilidad',
     }
     try {
@@ -502,7 +502,7 @@ export default function Contratos({ dbData, setDbData, toast, nav, irA }) {
                 onChange={e => setForm(f => ({ ...f, modo_utilidad: e.target.value }))}>
                 {Object.entries(MODOS_UTILIDAD).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </Sel>
-              <Inp label="% de utilidad" type="number" step="0.01" min="0" value={form.pct_utilidad ?? 10}
+              <Inp label="% de utilidad" type="number" step="0.01" min="0" value={form.pct_utilidad ?? utilidadPct()}
                 onChange={e => setForm(f => ({ ...f, pct_utilidad: e.target.value }))}
                 hint={(() => { const t = totalesContrato(100000000, { ...form, tipo: 'instalacion' });
                   return `Ej. sobre $100.000.000: utilidad ${fmt(t.utilidad)} · IVA ${fmt(t.iva)} · total ${fmt(t.total)}` })()} />

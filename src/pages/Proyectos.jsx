@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { C, Btn, Inp, Sel, Txt, Modal, Badge, Empty, SectionHeader, card, fmt, fmtDate, Progress, Stat } from '../components/UI.jsx'
+import { C, Btn, Inp, Sel, Txt, Modal, Badge, Empty, SectionHeader, card, fmt, fmtDate, Progress, Stat, tasaDe } from '../components/UI.jsx'
 import { supabase } from '../lib/supabase.js'
 import * as XLSX from 'xlsx'
 
@@ -12,6 +12,7 @@ const ESTADOS = {
 const ROL_FINANCIERO = ['superadmin', 'facturacion', 'supervisor', 'contratos']
 
 export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, puedeIr }) {
+  const retPct = tasaDe(dbData, 'retenido_pct', 10)   // retenido al instalador, del módulo Configuración
   const {
     proyectos = [], constructoras = [], contratos = [],
     items_contrato = [], actas_facturacion = [],
@@ -167,10 +168,11 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
       const adic = val(filas.filter(esAdicional))
       const dia = val(filasDia)
       const dias = filasDia.reduce((x, r) => x + Number(r.cant || 0), 0)
-      // Retención: el 10% de lo causado en ESTA obra (instalación + detallado + adicionales).
-      // Los días laborados, pasajes y bonificación no llevan retención.
+      // Retención: el porcentaje configurado, sobre lo causado en ESTA obra
+      // (instalación + detallado + adicionales). Los días laborados, pasajes
+      // y bonificación no llevan retención.
       const brutoObra = inst + det + adic
-      const retObra = Math.round(brutoObra * 0.10)
+      const retObra = Math.round(brutoObra * (retPct / 100))
       c.inst += inst; c.det += det; c.adic += adic; c.dia += dia; c.dias += dias; c.ret = (c.ret || 0) + retObra
       const kP = l.inst_id || l.inst_nombre
       const pp = porPersona[kP] || (porPersona[kP] = { nombre: l.inst_nombre || '—', cedula: l.inst_cedula, causado: 0, ret: 0, cortes: [] })
@@ -823,7 +825,7 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
             </table>
           </div>
           <p style={{ fontSize: 12, color: C.g5, marginTop: 12 }}>
-            El retenido de cada corte es el 10% de lo que la persona causó en esta obra (instalación, detallado y adicionales).
+            El retenido de cada corte es el {retPct}% de lo que la persona causó en esta obra (instalación, detallado y adicionales).
             Si en el mismo corte trabajó en otras obras, lo retenido allá sale en el reporte de esas obras.
           </p>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
@@ -866,7 +868,7 @@ export default function Proyectos({ dbData, setDbData, toast, user, nav, irA, pu
             </table>
           </div>
           <p style={{ fontSize: 12, color: C.g5, marginTop: 12 }}>
-            Instalación, detallado, adicionales, días y el retenido (10% de lo causado aquí) son solo de esta obra,
+            Instalación, detallado, adicionales, días y el retenido ({retPct}% de lo causado aquí) son solo de esta obra,
             y el neto obra es lo que le correspondió por ella. Las columnas con * son del corte completo de esa persona:
             si trabajó en varias obras, incluyen las demás.
           </p>

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { C, Btn, Inp, Sel, Txt, Modal, Badge, Empty, SectionHeader, card, fmt, fmtDate, Stat } from '../components/UI.jsx'
+import { C, Btn, Inp, Sel, Txt, Modal, Badge, Empty, SectionHeader, card, fmt, fmtDate, Stat, empresaDe, pieEmpresa } from '../components/UI.jsx'
 import { supabase } from '../lib/supabase.js'
 import * as XLSX from 'xlsx'
 
@@ -24,6 +24,7 @@ const vacio = {
 }
 
 export default function Adicionales({ dbData, setDbData, toast, nav, irA, puedeEditar, verValorContrato = true }) {
+  const emp = empresaDe(dbData)   // razón social, NIT, teléfono y correo, del módulo Configuración
   const editable = puedeEditar ? puedeEditar('adicionales') : true
   const {
     proyectos = [], constructoras = [], contratos = [], adicionales = [],
@@ -156,13 +157,13 @@ tbody td{padding:8px 10px;border:1px solid #E2E8F0;font-size:10px}tbody tr:nth-c
 <div><div class="l">Constructora</div><div class="v">${constr?.nombre || '—'}</div></div>
 <div><div class="l">Proyecto</div><div class="v">${proySel.nombre}</div></div>
 <div><div class="l">Fecha</div><div class="v">${new Date().toLocaleDateString('es-CO')}</div></div>
-<div><div class="l">NIT</div><div class="v">900.602.879-5</div></div></div>
+<div><div class="l">NIT</div><div class="v">${emp.nit || '—'}</div></div></div>
 <table><thead><tr><th>Fecha</th>${conTorre ? '<th>Torre</th>' : ''}<th>Apto</th><th>Descripción</th><th>Memorando</th><th class="r">Cant.</th><th class="r">Vr. unitario</th><th class="r">Total</th></tr></thead>
 <tbody>${filas.map(f => `<tr><td>${f.fecha}</td>${conTorre ? `<td>${f.torre}</td>` : ''}<td>${f.apto}</td><td>${f.descripcion}</td><td>${f.memorando}</td><td class="r">${f.cantidad}</td><td class="r">${$(f.unit)}</td><td class="r"><b>${$(f.total)}</b></td></tr>`).join('')}</tbody>
 <tr class="tot"><td colspan="${conTorre ? 7 : 6}" class="r">TOTAL ADICIONALES (${filas.length})</td><td class="r">${$(total)}</td></tr></table>
 <div class="nota"><b>Nota:</b> Valores sin IVA; el IVA se discrimina en la factura. Cada adicional está soportado por su memorando de la obra.<br>
-Santa Lucía Muebles y Pisos S.A.S. · NIT 900.602.879-5 · Tel: 311.341.04.58 · cesarbeta@gmail.com</div>
-<div class="firmas"><div class="firma">Elaboró — Santa Lucía Muebles y Pisos</div><div class="firma">Aprobó — ${constr?.nombre || 'Constructora'}</div></div>
+${pieEmpresa(emp)}</div>
+<div class="firmas"><div class="firma">Elaboró — ${emp.empresa}</div><div class="firma">Aprobó — ${constr?.nombre || 'Constructora'}</div></div>
 </div></body></html>`
     const v = window.open('', '_blank', 'width=960,height=700')
     if (v) { v.document.write(html); v.document.close() }

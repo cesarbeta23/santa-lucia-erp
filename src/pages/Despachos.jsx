@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { C, Btn, Inp, Sel, Txt, Modal, Badge, Empty, SectionHeader, card, fmt, fmtDate, Progress } from '../components/UI.jsx'
+import { C, Btn, Inp, Sel, Txt, Modal, Badge, Empty, SectionHeader, card, fmt, fmtDate, Progress, empresaDe, pieEmpresa } from '../components/UI.jsx'
+import { ivaPct } from '../lib/impuestos.js'
 import { supabase } from '../lib/supabase.js'
 
 const ESTADOS_REM = {
@@ -8,6 +9,7 @@ const ESTADOS_REM = {
 }
 
 export default function Despachos({ dbData, setDbData, toast, user, nav, irA, puedeEditar, verValorContrato = true }) {
+  const emp = empresaDe(dbData)   // razón social, NIT, teléfono y correo, del módulo Configuración
   const editable = puedeEditar ? puedeEditar('despachos') : true
   const {
     proyectos = [], constructoras = [], contratos = [],
@@ -206,7 +208,7 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
     <div class="info-item"><span class="info-label">Proyecto / Obra</span><span class="info-value">${payload.proyecto || '—'}</span></div>
     <div class="info-item"><span class="info-label">Contrato</span><span class="info-value">#${payload.contrato || '—'} (${payload.tipo || '—'})</span></div>
     <div class="info-item"><span class="info-label">Fecha</span><span class="info-value">${payload.fecha || new Date().toLocaleDateString('es-CO')}</span></div>
-    <div class="info-item"><span class="info-label">NIT</span><span class="info-value">900.602.879-5</span></div>
+    <div class="info-item"><span class="info-label">NIT</span><span class="info-value">${emp.nit || '—'}</span></div>
   </div>
 
   <!-- Tabla -->
@@ -242,8 +244,8 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
   <!-- Nota -->
   <div class="nota">
     <strong>Nota:</strong> Los valores relacionados corresponden al suministro <strong>sin IVA</strong>.
-    El IVA del 19% será discriminado en la factura electrónica correspondiente.<br>
-    Santa Lucía Muebles y Pisos S.A.S. · NIT 900.602.879-5 · Tel: 311.341.04.58 · cesarbeta@gmail.com
+    El IVA del ${ivaPct()}% será discriminado en la factura electrónica correspondiente.<br>
+    ${pieEmpresa(emp)}
   </div>
 
   <!-- Footer -->

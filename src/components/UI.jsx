@@ -273,6 +273,25 @@ export const cmpTxt = (a, b) => String(a ?? '').localeCompare(String(b ?? ''), '
 export const porNombre = (a, b) => cmpTxt(a?.nombre, b?.nombre)
 export const ordNom = xs => [...(xs || [])].sort(porNombre)
 
+// ── Datos de la empresa (módulo Configuración) ─────────────
+// Una sola fila en la tabla `configuracion`. Si todavía no existe, se devuelven
+// los valores de siempre para que remisiones e informes no salgan en blanco.
+const EMPRESA_DEF = {
+  empresa: 'Santa Lucía Muebles y Pisos S.A.S.', nit: '900.602.879-5',
+  telefono: '311.341.04.58', email: 'cesarbeta@gmail.com',
+}
+export const empresaDe = dbData => ({ ...EMPRESA_DEF, ...((dbData?.configuracion || [])[0] || {}) })
+// Pie de página: "Razón social · NIT 000 · Tel: 000 · correo"
+export const pieEmpresa = e => [e.empresa, e.nit && `NIT ${e.nit}`, e.telefono && `Tel: ${e.telefono}`, e.email]
+  .filter(Boolean).join(' · ')
+
+// Una tasa del módulo Configuración (iva_pct, retenido_pct, utilidad_pct).
+// Si la tabla aún no existe, devuelve el valor que estaba quemado antes.
+export const tasaDe = (dbData, k, porDefecto) => {
+  const v = Number(((dbData?.configuracion || [])[0] || {})[k])
+  return Number.isFinite(v) ? v : porDefecto
+}
+
 // ── Hook toast ─────────────────────────────────────────────
 export function useToast() {
   const [toasts, setToasts] = window.__toastState || [[], () => {}]

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { C, Btn, Inp, Toast, fmt, porNombre } from './components/UI.jsx'
+import { C, Btn, Inp, Modal, Toast, fmt, porNombre } from './components/UI.jsx'
 import { supabase, setAccessToken } from './lib/supabase.js'
+import { setTasas } from './lib/impuestos.js'
 import { apiUrl } from './lib/api.js'
 
 const SESION_KEY = 'sl_erp_session'
@@ -185,7 +186,49 @@ function Login({ onLogin }) {
 }
 
 // ── Sidebar ────────────────────────────────────────────────
-function Sidebar({ user, view, setView, onLogout, onIrGestion }) {
+// ── CAMBIAR MI PIN ────────────────────────────────────────
+// Va por RPC: la tabla usuarios está cerrada a escritura salvo para la oficina,
+// y la función de la base saca de la sesión a quién le cambia el PIN, así que
+// nadie puede cambiárselo a otro.
+function CambiarPin({ onClose, toast }) {
+  const [f, setF] = useState({ actual: '', nuevo: '', rep: '' })
+  const [yendo, setYendo] = useState(false)
+
+  async function guardar() {
+    if (f.nuevo !== f.rep) { toast('El PIN nuevo y su repetición no coinciden', 'err'); return }
+    if (!/^[0-9]{4,8}$/.test(f.nuevo.trim())) { toast('El PIN debe ser de 4 a 8 números', 'err'); return }
+    setYendo(true)
+    const { error } = await supabase.rpc('cambiar_mi_pin', { p_actual: f.actual.trim(), p_nuevo: f.nuevo.trim() })
+    setYendo(false)
+    if (error) { toast(error.message || 'No se pudo cambiar el PIN', 'err'); return }
+    toast('PIN cambiado. Úsalo la próxima vez que entres.', 'ok')
+    onClose()
+  }
+
+  return (
+    <Modal title="Cambiar mi PIN" onClose={onClose}>
+      <p style={{ fontSize: 13, color: C.g5, margin: '0 0 14px' }}>
+        Con este PIN entras al ERP y a Gestión de Obras. De 4 a 8 números.
+        Nadie más lo puede ver.
+      </p>
+      <Inp label="PIN actual" type="password" inputMode="numeric" autoComplete="current-password"
+        value={f.actual} onChange={e => setF(x => ({ ...x, actual: e.target.value }))} />
+      <Inp label="PIN nuevo" type="password" inputMode="numeric" autoComplete="new-password"
+        value={f.nuevo} onChange={e => setF(x => ({ ...x, nuevo: e.target.value }))} />
+      <Inp label="Repite el PIN nuevo" type="password" inputMode="numeric" autoComplete="new-password"
+        value={f.rep} onChange={e => setF(x => ({ ...x, rep: e.target.value }))} />
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 6 }}>
+        <Btn onClick={onClose}>Cancelar</Btn>
+        <Btn variant="primary" disabled={yendo || !f.actual || !f.nuevo || !f.rep} onClick={guardar}>
+          {yendo ? 'Cambiando…' : 'Cambiar PIN'}
+        </Btn>
+      </div>
+    </Modal>
+  )
+}
+
+function Sidebar({ user, view, setView, onLogout, onIrGestion, toast }) {
+  const [pinM, setPinM] = useState(false)
   const visibleModules = MODULES.map(sec => ({
     ...sec,
     items: sec.items.filter(it => it.roles.includes(user.rol)),
@@ -281,6 +324,15 @@ function Sidebar({ user, view, setView, onLogout, onIrGestion }) {
           </div>
           <div style={{ fontSize: 11, color: C.g5, textTransform: 'capitalize' }}>{user.rol}</div>
         </div>
+        <button onClick={() => setPinM(true)} style={{
+          background: 'none', border: 'none', color: C.g5,
+          cursor: 'pointer', fontSize: 15, padding: 4,
+          borderRadius: 6, transition: 'color .1s',
+        }}
+          title="Cambiar mi PIN"
+          onMouseEnter={e => (e.currentTarget.style.color = C.or)}
+          onMouseLeave={e => (e.currentTarget.style.color = C.g5)}
+        >🔑</button>
         <button onClick={onLogout} style={{
           background: 'none', border: 'none', color: C.g5,
           cursor: 'pointer', fontSize: 16, padding: 4,
@@ -291,6 +343,7 @@ function Sidebar({ user, view, setView, onLogout, onIrGestion }) {
           onMouseLeave={e => (e.currentTarget.style.color = C.g5)}
         >⏻</button>
       </div>
+      {pinM && <CambiarPin onClose={() => setPinM(false)} toast={toast} />}
     </div>
   )
 }
@@ -344,6 +397,8 @@ export default function App() {
     actas_instalacion: [], mapa_items_instalacion: [],
     // de la app de obras existente:
     obras: [], usuarios: [], elementos: [], liquidaciones: [],
+    // datos de la empresa y tasas (módulo Configuración)
+    configuracion: [],
   })
   const [loading, setLoading] = useState(true)
 
@@ -396,6 +451,8 @@ export default function App() {
         'subitems_instalacion', 'mapa_items_instalacion', 'entregas_instalacion', 'cantidades_torre',
         // de Gestión de Obras (solo lectura, para el avance de instalación):
         'obras', 'elementos', 'liquidaciones', 'usuarios',
+        // datos de la empresa, IVA, retenido (módulo Configuración)
+        'configuracion',
       ]
       const results = await Promise.all(
         // De usuarios solo se traen los datos básicos: nunca el PIN
@@ -412,6 +469,10 @@ export default function App() {
       const POR_NOMBRE = ['constructoras', 'proyectos', 'obras', 'usuarios', 'elementos', 'proveedores']
       const newData = {}
       results.forEach(({ t, data }) => { newData[t] = POR_NOMBRE.includes(t) ? [...data].sort(porNombre) : data })
+      // El IVA y la utilidad por defecto se fijan acá, antes de que cualquier
+      // pantalla calcule un total. Si la tabla aún no existe, quedan los de siempre.
+      const cfg = (newData.configuracion || [])[0]
+      if (cfg) setTasas({ iva: cfg.iva_pct, utilidad: cfg.utilidad_pct })
       setDbData(newData)
     } catch (e) {
       toast('Error cargando datos: ' + e.message, 'err')
@@ -478,7 +539,7 @@ export default function App() {
           {esMovil() && <div onClick={() => setMenuAbierto(false)}
             style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 40 }} />}
           <div style={esMovil() ? { position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 50 } : {}}>
-            <Sidebar user={user} view={view} setView={irMenu} onLogout={logout} onIrGestion={() => irAGestion(toast)} />
+            <Sidebar user={user} view={view} setView={irMenu} onLogout={logout} onIrGestion={() => irAGestion(toast)} toast={toast} />
           </div>
         </>
       )}

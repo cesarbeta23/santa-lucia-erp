@@ -1,6 +1,6 @@
 import { callClaude } from '../lib/api.js'
 import { useState, useRef } from 'react'
-import { C, Btn, Inp, Sel, Txt, Modal, Badge, Empty, SectionHeader, card, fmt, fmtDate, Progress } from '../components/UI.jsx'
+import { C, Btn, Inp, Sel, Txt, Modal, Badge, Empty, SectionHeader, card, fmt, fmtDate, Progress, tasaDe } from '../components/UI.jsx'
 import { supabase } from '../lib/supabase.js'
 
 const emptyPedido = { proyecto_id: '', numero: '', proveedor: '', fecha: '', estado: 'pendiente', notas: '' }
@@ -294,7 +294,7 @@ export default function Pedidos({ dbData, setDbData, toast, nav, irA, puedeEdita
     const proyecto = proyectos.find(p => p.id === pedidoSel.proyecto_id)
     const pct = pctRecibido(pedidoSel.id)
     const totalPedido = items.reduce((s, i) => s + Number(i.cantidad_pedida||0) * Number(i.vr_unitario||0), 0)
-    const ivaPedido = totalPedido * 0.19
+    const ivaPedido = totalPedido * (tasaDe(dbData, 'iva_pct', 19) / 100)
     const totalConIvaPedido = totalPedido + ivaPedido
 
     return (
