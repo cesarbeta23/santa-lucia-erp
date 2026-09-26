@@ -276,9 +276,10 @@ export const ordNom = xs => [...(xs || [])].sort(porNombre)
 // ── Datos de la empresa (módulo Configuración) ─────────────
 // Una sola fila en la tabla `configuracion`. Si todavía no existe, se devuelven
 // los valores de siempre para que remisiones e informes no salgan en blanco.
+// A propósito NO trae teléfono ni correo: si la configuración no cargara, es
+// preferible que el informe salga sin contacto a que salga con uno equivocado.
 const EMPRESA_DEF = {
   empresa: 'Santa Lucía Muebles y Pisos S.A.S.', nit: '900.602.879-5',
-  telefono: '311.341.04.58', email: 'cesarbeta@gmail.com',
 }
 export const empresaDe = dbData => ({ ...EMPRESA_DEF, ...((dbData?.configuracion || [])[0] || {}) })
 // Pie de página: "Razón social · NIT 000 · Tel: 000 · correo"

@@ -200,7 +200,7 @@ export default function Despachos({ dbData, setDbData, toast, user, nav, irA, pu
 
   <!-- Cabecera -->
   <div class="header">
-    <h1>🪵 Santa Lucía Muebles y Pisos S.A.S.</h1>
+    <h1>🪵 ${emp.empresa}</h1>
     <p>Informe de Cobro — Pendiente por Facturar</p>
   </div>
   <div class="subheader">

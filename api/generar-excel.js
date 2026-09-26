@@ -11,19 +11,27 @@ export default async function handler(req, res) {
 
   try {
     const { proyecto, constructora, contrato, tipo, fecha, items } = req.body
+    // Datos de la empresa: los manda el cliente desde el módulo Configuración.
+    // Si no llegan (versión vieja de la app), se usan los de siempre.
+    const emp = req.body.empresa || {}
+    const nomEmpresa = emp.empresa  || 'Santa Lucía Muebles y Pisos S.A.S.'
+    const nit        = emp.nit      || '900.602.879-5'
+    const iva        = emp.iva_pct ?? 19
+    const pie = [nomEmpresa, nit && `NIT ${nit}`, emp.telefono && `Tel: ${emp.telefono}`, emp.email]
+      .filter(Boolean).join(' · ')
 
     const wb = XLSX.utils.book_new()
 
     // ── Datos del encabezado ──────────────────────────────────
     const encabezado = [
-      ['SANTA LUCÍA MUEBLES Y PISOS S.A.S.'],
+      [String(nomEmpresa).toUpperCase()],
       ['INFORME DE COBRO — PENDIENTE POR FACTURAR'],
       [''],
       ['CONSTRUCTORA:', constructora || '—'],
       ['PROYECTO / OBRA:', proyecto || '—'],
       ['CONTRATO:', `#${contrato || '—'} (${tipo || '—'})`],
       ['FECHA DE EMISIÓN:', fecha || new Date().toLocaleDateString('es-CO')],
-      ['NIT SANTA LUCÍA:', '900.602.879-5'],
+      ['NIT:', nit],
       [''],
     ]
 
@@ -51,8 +59,8 @@ export default async function handler(req, res) {
     const totales = [
       ['', '', '', '', '', totalXFact, '', totalCobro],
       [''],
-      ['NOTA: Los valores corresponden al suministro sin IVA. El IVA (19%) se discriminará en la factura.'],
-      ['Santa Lucía Muebles y Pisos S.A.S. · NIT 900.602.879-5 · Tel: 311.341.04.58 · cesarbeta@gmail.com'],
+      [`NOTA: Los valores corresponden al suministro sin IVA. El IVA (${iva}%) se discriminará en la factura.`],
+      [pie],
     ]
 
     const allData = [...encabezado, ...tableHeader, ...filas, ...totales]

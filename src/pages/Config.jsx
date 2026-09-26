@@ -34,7 +34,10 @@ export default function Config({ dbData, user, toast, reload }) {
   const [form, setForm]   = useState(cfg || {})
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => { if (cfg) setForm(cfg) }, [cfg?.id])
+  // Se resincroniza con lo que hay en la base cada vez que la fila cambia.
+  // Antes dependía solo del id (que siempre es 'app'), así que la pantalla se
+  // quedaba mostrando lo tecleado aunque no se hubiera guardado nada.
+  useEffect(() => { if (cfg) setForm(cfg) }, [cfg?.actualizado_en, cfg?.id])
 
   if (!cfg) {
     return (
@@ -57,16 +60,21 @@ export default function Config({ dbData, user, toast, reload }) {
       if (v < 0 || v > 100) { toast(`${t.l}: debe estar entre 0 y 100`, 'err'); return }
     }
     setSaving(true)
-    const { error } = await supabase.from('configuracion').update({
-      empresa: form.empresa || null, nit: form.nit || null,
-      telefono: form.telefono || null, email: form.email || null,
-      direccion: form.direccion || null, ciudad: form.ciudad || null,
-      iva_pct: num(form.iva_pct), retenido_pct: num(form.retenido_pct),
-      utilidad_pct: num(form.utilidad_pct),
-      actualizado_en: new Date().toISOString(), actualizado_por: user.nombre || user.id,
-    }).eq('id', cfg.id)
+    // Va por función de la base a propósito: un UPDATE normal, cuando la regla
+    // de permisos no se cumple, no falla — no cambia nada y no avisa. La función
+    // devuelve la fila guardada, o levanta el error diciendo qué pasó.
+    const { data, error } = await supabase.rpc('guardar_configuracion', {
+      p: {
+        empresa: form.empresa || '', nit: form.nit || '',
+        telefono: form.telefono || '', email: form.email || '',
+        direccion: form.direccion || '', ciudad: form.ciudad || '',
+        iva_pct: num(form.iva_pct), retenido_pct: num(form.retenido_pct),
+        utilidad_pct: num(form.utilidad_pct),
+      },
+    })
     setSaving(false)
     if (error) { toast('No se pudo guardar: ' + error.message, 'err'); return }
+    if (!data) { toast('La base no devolvió la fila guardada. Vuelve a intentar.', 'err'); return }
     if (tasasCambiaron) {
       toast('Guardado. Recargando para aplicar las tasas…', 'ok')
       setTimeout(() => window.location.reload(), 900)

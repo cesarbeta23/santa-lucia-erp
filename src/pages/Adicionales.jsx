@@ -152,7 +152,7 @@ tbody td{padding:8px 10px;border:1px solid #E2E8F0;font-size:10px}tbody tr:nth-c
 .firmas{display:flex;gap:40px;margin-top:48px}.firma{flex:1;border-top:1px solid #94A3B8;padding-top:6px;font-size:10px;color:#475569;text-align:center}
 @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.np{display:none}}</style></head><body><div class="page">
 <div class="np" style="text-align:right;margin-bottom:16px"><button onclick="window.print()" style="background:#2B313A;color:white;border:none;padding:10px 24px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer">🖨️ Guardar / Imprimir PDF</button></div>
-<div class="header"><h1>🪵 Santa Lucía Muebles y Pisos S.A.S.</h1><p>Cuenta de cobro — Adicionales de obra</p></div>
+<div class="header"><h1>🪵 ${emp.empresa}</h1><p>Cuenta de cobro — Adicionales de obra</p></div>
 <div class="sub">
 <div><div class="l">Constructora</div><div class="v">${constr?.nombre || '—'}</div></div>
 <div><div class="l">Proyecto</div><div class="v">${proySel.nombre}</div></div>

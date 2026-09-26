@@ -1,4 +1,4 @@
-import { C, Stat, card, fmt, Badge } from '../components/UI.jsx'
+import { C, Stat, card, fmt, Badge, empresaDe } from '../components/UI.jsx'
 
 export default function Dashboard({ dbData, user, puedeIr, irA }) {
   const verFact = puedeIr ? puedeIr('facturacion') : false
@@ -18,7 +18,7 @@ export default function Dashboard({ dbData, user, puedeIr, irA }) {
           Hola, {user.nombre?.split(' ')[0]} 👋
         </h1>
         <p style={{ color: C.g5, marginTop: 4, fontSize: 14 }}>
-          Resumen general — Santa Lucía Muebles y Pisos S.A.S.
+          Resumen general — {empresaDe(dbData).empresa}
         </p>
       </div>
 
