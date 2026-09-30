@@ -102,15 +102,22 @@ tbody tr:hover { background: var(--or-l); }
   main { overflow-x: hidden !important; }
   main > div { max-width: 100%; overflow-x: hidden; }
   /* Dentro de una cuadrícula o de un flex, el hijo se estira para caber en su
-     contenido; con min-width:0 se deja encoger y ahí sí aparece el deslizamiento. */
-  [style*="overflow: auto"], [style*="overflow:auto"],
-  [style*="overflow-x: auto"], [style*="overflow-x:auto"] {
+     contenido; con min-width:0 se deja encoger y ahí sí aparece el deslizamiento.
+     Dos cosas que estaban mal y tumbaban el deslizamiento vertical en el celular:
+     1. `touch-action: pan-x` le decía al navegador que de esa caja para adentro
+        el dedo solo servía de lado. Las tablas largas no bajaban y tocaba usar
+        la barrita del borde. Sin esa línea el navegador decide según el gesto:
+        de lado mueve la caja, hacia abajo baja la página. Que es lo natural.
+     2. Sin el `:not(main)` el selector también cogía al <main> —que tiene
+        overflow:auto y es el que baja toda la pantalla—, así que le quedaba
+        prohibido el dedo vertical a la aplicación entera. */
+  :not(main)[style*="overflow: auto"], :not(main)[style*="overflow:auto"],
+  :not(main)[style*="overflow-x: auto"], :not(main)[style*="overflow-x:auto"] {
     display: block;
     max-width: 100%;
     min-width: 0 !important;
     overflow-x: auto !important;
     -webkit-overflow-scrolling: touch;
-    touch-action: pan-x;
   }
   table { width: max-content; min-width: 100%; }
   /* aviso visual de que el cuadro se desliza */
