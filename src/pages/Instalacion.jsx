@@ -9,6 +9,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
     proyectos = [], contratos = [], items_contrato = [], constructoras = [],
     actas_facturacion = [], items_acta_facturacion = [],
     obras = [], elementos = [], subitems_instalacion = [], entregas_instalacion = [], cantidades_torre = [],
+    liquidaciones = [],
   } = dbData
   const editable = puedeEditar ? puedeEditar('instalacion') : true
 
@@ -23,6 +24,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
   const [obraForm, setObraForm]   = useState('')
   const [partesItem, setPartesItem] = useState(null)     // ítem al que se le están armando las partes
   const [partesTmp, setPartesTmp]   = useState([])
+  const [borrarEls, setBorrarEls]   = useState([])       // elementos de la obra a botar al guardar
   const [saving, setSaving]       = useState(false)
   const [torreSel, setTorreSel]   = useState('')        // '' = todas las torres
   const [modalReparto, setModalReparto] = useState(false)
@@ -262,9 +264,36 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
   function abrirPartes(item) {
     const ps = partesDe(item.id)
     setPartesItem(item)
+    setBorrarEls([])          // cada vez que se abre, la lista de borrados arranca vacía
     setPartesTmp(ps.length
       ? ps.map(p => ({ id: p.id, nombre: p.nombre, unidad: p.unidad || 'und', valor_instalador: p.valor_instalador || 0, valor_detallado: p.valor_detallado || 0, elemento_id: p.elemento_id }))
       : [{ nombre: item.descripcion, unidad: item.unidad || 'und', valor_instalador: '', valor_detallado: '' }])
+  }
+
+  // ¿Dónde está usado un elemento de la obra? Es el seguro del borrado: un
+  // elemento solo se puede botar si no lo dicta ninguna tipología, no está en
+  // ningún apto y no aparece en ninguna liquidación. Si está en alguna parte,
+  // se quita del desglose del ERP pero el elemento se queda quieto, porque
+  // detrás hay trabajo marcado o plata ya liquidada.
+  function usosDelElemento(eid) {
+    const tips = [], obrasConApto = new Set()
+    let aptos = 0
+    for (const o of obras) {
+      for (const t of (o.tipologias || [])) {
+        if ((t.elementoIds || []).includes(eid)) tips.push(`${o.nombre} · ${t.nombre}`)
+      }
+      for (const p of (o.pisos || [])) {
+        for (const a of (p.aptos || [])) {
+          const hay = [...(a.elementos || []), ...(a.elementosExtra || [])]
+            .some(e => e.elementoId === eid)
+          if (hay) { aptos++; obrasConApto.add(o.nombre) }
+        }
+      }
+    }
+    const liquidado = liquidaciones.some(l =>
+      (l.rows || []).some(r => r.refElem === eid))
+    return { tips, aptos, obras: [...obrasConApto], liquidado,
+             libre: !tips.length && !aptos && !liquidado }
   }
 
   // Elementos que se pueden enlazar: los de esta obra y los generales de siempre
@@ -290,6 +319,35 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
     toast(`Copiado el desglose de ${refO}`, 'ok')
   }
 
+  // Quitar una parte del desglose. Si esa parte ya tiene elemento en la obra,
+  // hay que decidir qué pasa con él: antes se quedaba siempre, y así quedaban
+  // elementos repetidos en obras nuevas sin forma de sacarlos.
+  function quitarParte(i) {
+    const p = partesTmp[i]
+    const quita = () => setPartesTmp(t => t.filter((_, j) => j !== i))
+    if (!p?.elemento_id) { quita(); return }       // nunca llegó a la obra: se va y ya
+    const nom = elementos.find(e => e.id === p.elemento_id)?.nombre || p.nombre || 'el elemento'
+    const u = usosDelElemento(p.elemento_id)
+    if (!u.libre) {
+      const donde = [
+        u.tips.length ? `${u.tips.length} tipología(s)` : null,
+        u.aptos ? `${u.aptos} apto(s)` : null,
+        u.liquidado ? 'una liquidación' : null,
+      ].filter(Boolean).join(', ')
+      quita()
+      toast(`Quité la parte, pero "${nom}" se queda en la obra: está en ${donde}.`, 'info')
+      return
+    }
+    const ok = window.confirm(
+      `Quitar "${nom}" del desglose.\n\n`
+      + `No está en ninguna tipología, ni en ningún apto, ni en una liquidación, `
+      + `así que se puede borrar de la obra sin perder nada.\n\n`
+      + `Aceptar → también se borra de la obra.\n`
+      + `Cancelar → solo se quita del desglose y el elemento se queda.`)
+    if (ok) setBorrarEls(b => [...new Set([...b, p.elemento_id])])
+    quita()
+  }
+
   async function guardarPartes() {
     setSaving(true)
     try {
@@ -310,24 +368,46 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
         if (error) throw error
         nuevas = data
 
-        // La unidad se le pasa al elemento de Gestión, no solo a la parte del ERP.
-        // Si no, un zócalo enlazado se queda en "und" y allá sale el selector de
-        // "42 de 42", que solo tiene sentido en piezas contables.
+        // Lo que se corrige acá tiene que bajarle al elemento de Gestión, que es
+        // lo que ven los instaladores en el apto. Antes solo bajaba la unidad:
+        // se arreglaba un nombre mal escrito o un precio, el ERP decía "guardado"
+        // y en la obra seguía el viejo, sin avisar.
+        // Solo se mandan los campos que de verdad cambiaron, para no pisar sin
+        // necesidad lo que alguien haya ajustado en Gestión.
         const elsAct = []
         for (const p of filas.filter(x => x.elemento_id)) {
           const el = (dbData.elementos || []).find(e => e.id === p.elemento_id)
+          if (!el) continue
+          const cambios = {}
+          const nNuevo = (p.nombre || '').trim()
           const uNueva = (p.unidad || 'und').trim()
-          if (!el || String(el.unidad || '').trim().toLowerCase() === uNueva.toLowerCase()) continue
+          const pIns = Number(p.valor_instalador) || 0
+          const pDet = Number(p.valor_detallado) || 0
+          if (nNuevo && nNuevo !== String(el.nombre || '').trim()) cambios.nombre = nNuevo
+          if (String(el.unidad || '').trim().toLowerCase() !== uNueva.toLowerCase()) cambios.unidad = uNueva
+          if ((Number(el.precio) || 0) !== pIns) cambios.precio = pIns
+          if ((Number(el.precio_detallado) || 0) !== pDet) cambios.precio_detallado = pDet
+          if (!Object.keys(cambios).length) continue
           const { data: elAct, error: e2 } = await supabase.from('elementos')
-            .update({ unidad: uNueva }).eq('id', p.elemento_id).select().single()
-          if (e2) { console.error('no se pudo cambiar la unidad del elemento:', e2.message); continue }
-          elsAct.push(elAct)
+            .update(cambios).eq('id', p.elemento_id).select().single()
+          if (e2) { console.error('no se pudo actualizar el elemento de la obra:', e2.message); continue }
+          elsAct.push({ el: elAct, cambios })
         }
         if (elsAct.length) {
-          setDbData(d => ({ ...d, elementos: (d.elementos || []).map(e => elsAct.find(a => a.id === e.id) || e) }))
-          toast(`Unidad actualizada en ${elsAct.length} elemento(s) de la obra`, 'ok')
+          const acts = elsAct.map(x => x.el)
+          setDbData(d => ({ ...d, elementos: (d.elementos || []).map(e => acts.find(a => a.id === e.id) || e) }))
+          // Si se movió un precio, se avisa aparte: eso cambia lo que se le paga a
+          // la gente en el corte que esté abierto. Los cortes cerrados son foto y
+          // no se tocan.
+          const tocoPrecio = elsAct.some(x => 'precio' in x.cambios || 'precio_detallado' in x.cambios)
+          toast(`${acts.length} elemento(s) actualizados en la obra`
+            + (tocoPrecio ? ' · cambió lo que se paga en el corte abierto' : ''), 'ok')
         }
       }
+      const subsRestantes = [
+        ...(subitems_instalacion || []).filter(p => p.item_contrato_id !== partesItem.id),
+        ...nuevas,
+      ]
       setDbData(d => ({
         ...d,
         subitems_instalacion: [
@@ -335,7 +415,28 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
           ...nuevas,
         ],
       }))
-      toast('Partes guardadas', 'ok')
+
+      // Borrado de los elementos que se marcaron con la ✕. Se vuelve a revisar
+      // acá, no se confía en lo que se chequeó al oprimirla: entre un momento y
+      // otro el elemento pudo entrar a una tipología, o quedar enlazado desde el
+      // desglose de otro ítem.
+      const borrados = []
+      for (const eid of borrarEls) {
+        if (subsRestantes.some(s => s.elemento_id === eid)) continue   // otro ítem lo usa
+        if (!usosDelElemento(eid).libre) continue                      // le apareció historia
+        const { error: e3 } = await supabase.from('elementos').delete().eq('id', eid)
+        if (e3) { console.error('no se pudo borrar el elemento:', e3.message); continue }
+        borrados.push(eid)
+      }
+      if (borrados.length) {
+        setDbData(d => ({ ...d, elementos: (d.elementos || []).filter(e => !borrados.includes(e.id)) }))
+      }
+      const quedaron = borrarEls.length - borrados.length
+      toast('Partes guardadas'
+        + (borrados.length ? ` · ${borrados.length} elemento(s) borrados de la obra` : '')
+        + (quedaron ? ` · ${quedaron} no se pudo(ieron) borrar, siguen en uso` : ''),
+        quedaron ? 'info' : 'ok')
+      setBorrarEls([])
       setPartesItem(null)
     } catch (e) { toast('Error: ' + e.message, 'err') }
     setSaving(false)
@@ -982,6 +1083,10 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
             Los valores son lo que se le paga a la gente por cada parte.
             Si la obra ya está montada, enlazá cada parte con el elemento que ya existe en Gestión de Obras;
             así no se crean repetidos y los cortes viejos quedan intactos.
+            <br />
+            Los renglones con borde naranja ya están en la obra: al guardar, el nombre, la unidad y los
+            valores que corrijas acá se actualizan allá. Si movés un valor, cambia lo que se paga en el
+            corte abierto; los cortes ya cerrados no se tocan.
           </p>
           <div style={{ display: 'grid', gap: 6 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 100px 100px 1fr 32px', gap: 8, fontSize: 10, fontWeight: 700, color: C.g5, textTransform: 'uppercase' }}>
@@ -989,10 +1094,16 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
             </div>
             {partesTmp.map((p, i) => (
               <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 100px 100px 1fr 32px', gap: 8, alignItems: 'center' }}>
-                <input value={p.nombre} disabled={!!p.elemento_id}
+                {/* El nombre se podía escribir solo mientras la parte no estuviera
+                    en la obra: un error de digitación quedaba grabado para siempre.
+                    Ahora se edita siempre, y al guardar se le renombra el elemento
+                    allá, que es donde lo ve el instalador. El borde naranja avisa
+                    que ese renglón ya está enlazado. */}
+                <input value={p.nombre}
                   onChange={e => setPartesTmp(t => t.map((x, j) => j === i ? { ...x, nombre: e.target.value } : x))}
                   placeholder="Ej: Ala y marco"
-                  style={{ padding: '7px 10px', border: `1px solid ${C.g2}`, borderRadius: 8, fontSize: 13, background: p.elemento_id ? C.g0 : 'white' }} />
+                  title={p.elemento_id ? 'Enlazado a la obra: al guardar se renombra allá también' : undefined}
+                  style={{ padding: '7px 10px', border: `1px solid ${p.elemento_id ? C.orM : C.g2}`, borderRadius: 8, fontSize: 13, background: 'white' }} />
                 <input value={p.unidad}
                   onChange={e => setPartesTmp(t => t.map((x, j) => j === i ? { ...x, unidad: e.target.value } : x))}
                   style={{ padding: '7px 8px', border: `1px solid ${C.g2}`, borderRadius: 8, fontSize: 13 }} />
@@ -1012,7 +1123,7 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                   <option value="">— crear nuevo al enviar —</option>
                   {elsObra.map(el => <option key={el.id} value={el.id}>{el.nombre}</option>)}
                 </select>
-                <Btn size="sm" variant="danger" onClick={() => setPartesTmp(t => t.filter((_, j) => j !== i))}>✕</Btn>
+                <Btn size="sm" variant="danger" onClick={() => quitarParte(i)}>✕</Btn>
               </div>
             ))}
           </div>
@@ -1023,8 +1134,16 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
             Total que se paga por unidad: <strong>{fmt(partesTmp.reduce((s, p) => s + (Number(p.valor_instalador) || 0) + (Number(p.valor_detallado) || 0), 0))}</strong>
             {verValorContrato && partesItem.vr_unitario ? ` · se cobra ${fmt(partesItem.vr_unitario)}` : ''}
           </div>
+          {borrarEls.length > 0 && (
+            <div style={{ marginTop: 12, padding: '10px 12px', background: '#FEE2E2', border: '1px solid #FECACA',
+              borderRadius: 8, fontSize: 12, color: '#991B1B' }}>
+              Al guardar se borran <strong>{borrarEls.length}</strong> elemento(s) de la obra:{' '}
+              {borrarEls.map(id => elementos.find(e => e.id === id)?.nombre || id).join(', ')}.
+              {' '}Si cancelás, no se borra nada.
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
-            <Btn onClick={() => setPartesItem(null)}>Cancelar</Btn>
+            <Btn onClick={() => { setBorrarEls([]); setPartesItem(null) }}>Cancelar</Btn>
             <Btn variant="primary" onClick={guardarPartes} disabled={saving}>{saving ? 'Guardando…' : 'Guardar'}</Btn>
           </div>
         </Modal>
