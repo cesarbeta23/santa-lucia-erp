@@ -35,8 +35,8 @@ export const MODOS_UTILIDAD = {
   incluida:           'Utilidad incluida en los precios',
 }
 
-export function totalesContrato(subtotal, contrato) {
-  const sub = Number(subtotal) || 0
+// Cálculo con los precios SIN impuesto: a la base se le suma lo que corresponda.
+function sobreLaBase(sub, contrato) {
   if (contrato?.tipo !== 'instalacion') {
     const iva = sub * (IVA_PCT / 100)
     return { subtotal: sub, utilidad: 0, iva, total: sub + iva, sumaUtilidad: false, pct: 0, modo: null }
@@ -52,11 +52,54 @@ export function totalesContrato(subtotal, contrato) {
   return { subtotal: sub, utilidad, iva, total, sumaUtilidad, pct, modo }
 }
 
+// Cuánto vale un peso de precio una vez se le suma todo. Es el número por el que
+// hay que dividir cuando el impuesto ya viene adentro.
+function factorDe(contrato) {
+  const f = Number(contrato?.factor_iva)
+  if (Number.isFinite(f) && f > 0) return f
+  // Sin factor guardado, el que sale de las tasas de hoy.
+  const t = sobreLaBase(1, contrato)
+  return t.total > 0 ? t.total : 1
+}
+
+export function totalesContrato(subtotal, contrato) {
+  const sub = Number(subtotal) || 0
+  const base = sobreLaBase(sub, contrato)
+  if (!contrato?.iva_incluido) return base
+
+  // Los precios de este contrato YA traen el impuesto adentro (así los pactó la
+  // obra y así se montaron). Entonces lo que llega no es una base a la que haya
+  // que sumarle nada: es el total, y el impuesto se SACA de ahí.
+  //
+  // Contratos ya lo hacía así por su cuenta, pero esta función no, y Facturación
+  // y el Dashboard la usan directo. Por eso un acta de un contrato con IVA
+  // incluido salía con el 19% puesto dos veces y el acumulado se inflaba.
+  const factor = factorDe(contrato)
+  const iva = factor > 0 ? sub * (1 - 1 / factor) : 0
+  return {
+    subtotal: sub - iva,        // la base que queda al descontar el impuesto
+    utilidad: 0,                // ya está adentro del precio, no se discrimina
+    iva,
+    total: sub,                 // el precio pactado, tal cual
+    sumaUtilidad: false,
+    pct: base.pct, modo: base.modo, ivaIncluido: true,
+  }
+}
+
 // Texto corto para mostrar junto al IVA
 export function etiquetaIva(contrato) {
-  if (contrato?.tipo !== 'instalacion') return `IVA ${IVA_PCT}%`
-  const t = totalesContrato(100, contrato)
+  const inc = !!contrato?.iva_incluido
+  if (contrato?.tipo !== 'instalacion') {
+    return inc ? `IVA ${IVA_PCT}% (ya incluido en los precios)` : `IVA ${IVA_PCT}%`
+  }
+  const t = sobreLaBase(100, contrato)
   const pct = Number(t.pct.toFixed(4))
-  if (t.modo === 'incluida') return `IVA ${IVA_PCT}% sobre utilidad ${pct}% incluida en precios`
-  return `IVA ${IVA_PCT}% sobre utilidad ${pct}%`
+  const base = t.modo === 'incluida'
+    ? `IVA ${IVA_PCT}% sobre utilidad ${pct}% incluida en precios`
+    : `IVA ${IVA_PCT}% sobre utilidad ${pct}%`
+  return inc ? `${base} (ya incluido en los precios)` : base
 }
+
+// ¿Los precios del contrato traen el impuesto adentro? Lo usan las pantallas
+// para rotular bien las columnas.
+export const conIvaIncluido = contrato => !!contrato?.iva_incluido
