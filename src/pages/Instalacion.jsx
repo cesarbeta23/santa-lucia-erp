@@ -47,6 +47,23 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
     return unirTorres(torreId ? ts.filter(t => t.id === torreId) : ts)
   }
   const partesDe  = itemId => subitems_instalacion.filter(p => p.item_contrato_id === itemId).sort((a, b) => (a.orden || 0) - (b.orden || 0))
+
+  // ── Elementos compartidos ─────────────────────────────────
+  //
+  // Un elemento de Gestión es PROPIO de esta obra si su obra_id es una de las torres
+  // del proyecto. Si no tiene obra_id es general (lo usan muchas obras), y si tiene el
+  // de otra obra es prestado.
+  //
+  // Esto importa porque al guardar el desglose se le baja el nombre y el precio al
+  // elemento de Gestión. Si el elemento es compartido, ese cambio le llega a TODAS las
+  // obras que lo usen — incluidas las que ya tienen trabajo marcado y liquidado con el
+  // nombre y el precio viejos. Un ajuste de una obra terminaría reescribiéndole el
+  // pasado a otras seis.
+  const esCompartido = (el, proy) => {
+    if (!el) return false
+    if (!el.obra_id) return true                                   // general
+    return !torresDe(proy).some(t => t.id === el.obra_id)          // de otra obra
+  }
   const elsDeItem = itemId => [...new Set(partesDe(itemId).filter(p => p.elemento_id).map(p => p.elemento_id))]
   const nombreEl  = eid => elementos.find(e => e.id === eid)?.nombre || eid
 
@@ -374,10 +391,12 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
         // y en la obra seguía el viejo, sin avisar.
         // Solo se mandan los campos que de verdad cambiaron, para no pisar sin
         // necesidad lo que alguien haya ajustado en Gestión.
-        const elsAct = []
+        const elsAct = [], bloqueados = []
         for (const p of filas.filter(x => x.elemento_id)) {
           const el = (dbData.elementos || []).find(e => e.id === p.elemento_id)
           if (!el) continue
+          // No se le escribe encima a un elemento que no es de esta obra. Ver esCompartido.
+          if (esCompartido(el, proySel)) { bloqueados.push({ parte: p.nombre || el.nombre, el }); continue }
           const cambios = {}
           const nNuevo = (p.nombre || '').trim()
           const uNueva = (p.unidad || 'und').trim()
@@ -402,6 +421,11 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
           const tocoPrecio = elsAct.some(x => 'precio' in x.cambios || 'precio_detallado' in x.cambios)
           toast(`${acts.length} elemento(s) actualizados en la obra`
             + (tocoPrecio ? ' · cambió lo que se paga en el corte abierto' : ''), 'ok')
+        }
+        if (bloqueados.length) {
+          const nombres = bloqueados.map(b => b.parte).join(', ')
+          toast(`No se cambió en la obra: ${nombres}. ${bloqueados.length === 1 ? 'Esa parte está enlazada a un elemento compartido con otras obras' : 'Esas partes están enlazadas a elementos compartidos con otras obras'}. `
+            + 'Usa "Desenlazar" en el renglón y vuelve a enviar a la obra para crear uno propio.', 'err')
         }
       }
       const subsRestantes = [
@@ -1092,8 +1116,12 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 100px 100px 1fr 32px', gap: 8, fontSize: 10, fontWeight: 700, color: C.g5, textTransform: 'uppercase' }}>
               <span>Parte</span><span>UM</span><span>Instalación</span><span>Detallado</span><span>Elemento en la obra</span><span />
             </div>
-            {partesTmp.map((p, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 100px 100px 1fr 32px', gap: 8, alignItems: 'center' }}>
+            {partesTmp.map((p, i) => {
+              const elEnlazado = p.elemento_id ? (dbData.elementos || []).find(e => e.id === p.elemento_id) : null
+              const compartido = esCompartido(elEnlazado, proySel)
+              return (
+              <div key={i}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 100px 100px 1fr 32px', gap: 8, alignItems: 'center' }}>
                 {/* El nombre se podía escribir solo mientras la parte no estuviera
                     en la obra: un error de digitación quedaba grabado para siempre.
                     Ahora se edita siempre, y al guardar se le renombra el elemento
@@ -1102,8 +1130,10 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                 <input value={p.nombre}
                   onChange={e => setPartesTmp(t => t.map((x, j) => j === i ? { ...x, nombre: e.target.value } : x))}
                   placeholder="Ej: Ala y marco"
-                  title={p.elemento_id ? 'Enlazado a la obra: al guardar se renombra allá también' : undefined}
-                  style={{ padding: '7px 10px', border: `1px solid ${p.elemento_id ? C.orM : C.g2}`, borderRadius: 8, fontSize: 13, background: 'white' }} />
+                  title={compartido
+                    ? `Enlazado a "${elEnlazado?.nombre}", un elemento compartido con otras obras. Lo que escribas acá NO se le baja a la obra: desenlázalo primero.`
+                    : p.elemento_id ? 'Enlazado a la obra: al guardar se renombra allá también' : undefined}
+                  style={{ padding: '7px 10px', border: `1.5px solid ${compartido ? C.rd : p.elemento_id ? C.orM : C.g2}`, borderRadius: 8, fontSize: 13, background: 'white' }} />
                 <input value={p.unidad}
                   onChange={e => setPartesTmp(t => t.map((x, j) => j === i ? { ...x, unidad: e.target.value } : x))}
                   style={{ padding: '7px 8px', border: `1px solid ${C.g2}`, borderRadius: 8, fontSize: 13 }} />
@@ -1125,7 +1155,21 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                 </select>
                 <Btn size="sm" variant="danger" onClick={() => quitarParte(i)}>✕</Btn>
               </div>
-            ))}
+              {compartido && (
+                <div style={{ gridColumn: '1 / -1', margin: '-2px 0 6px', padding: '6px 10px', background: C.rdL,
+                              border: `1px solid ${C.rd}`, borderRadius: 8, fontSize: 11.5, color: C.rd,
+                              display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ flex: 1, minWidth: 220 }}>
+                    Enlazado a <strong>{elEnlazado?.nombre}</strong>, que {elEnlazado?.obra_id ? 'es de otra obra' : 'es general y lo usan varias obras'}.
+                    Lo que escribas acá no se le baja a la obra.
+                  </span>
+                  <Btn size="sm" onClick={() => setPartesTmp(t => t.map((x, j) => j === i ? { ...x, elemento_id: null } : x))}>
+                    Desenlazar y crear uno propio
+                  </Btn>
+                </div>
+              )}
+              </div>
+            )})}
           </div>
           <div style={{ marginTop: 10 }}>
             <Btn size="sm" onClick={() => setPartesTmp(t => [...t, { nombre: '', unidad: 'und', valor_instalador: '', valor_detallado: '' }])}>+ Agregar parte</Btn>
