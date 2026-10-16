@@ -314,8 +314,19 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
   }
 
   // Elementos que se pueden enlazar: los de esta obra y los generales de siempre
+  // Al desglosar solo se ofrecen los elementos PROPIOS de esta obra.
+  //
+  // Antes también se ofrecía el catálogo general (los que no tienen obra_id), y ahí
+  // nacía todo el enredo: una parte quedaba enganchada a un elemento compartido, dos
+  // obras distintas se reescribían el nombre entre ellas, y en Gestión esa parte no
+  // aparecía al crear la tipología porque allá tampoco se muestran los generales
+  // cuando la obra ya tiene los suyos.
+  //
+  // Lo que no exista todavía se crea con "— crear nuevo al enviar —": nace propio de
+  // esta obra y amarrado a su ítem del contrato, que es lo que de verdad lo identifica.
+  // El nombre es apenas una etiqueta.
   const elsObra = elementos
-    .filter(el => el.activo !== false && (!el.obra_id || torresDe(proySel).some(t => t.id === el.obra_id)))
+    .filter(el => el.activo !== false && el.obra_id && torresDe(proySel).some(t => t.id === el.obra_id))
     .sort(porNombre)
 
   // Copia el desglose de otro ítem, cambiando el prefijo del nombre.
@@ -1152,6 +1163,10 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                   style={{ padding: '7px 8px', border: `1px solid ${C.g2}`, borderRadius: 8, fontSize: 12 }}>
                   <option value="">— crear nuevo al enviar —</option>
                   {elsObra.map(el => <option key={el.id} value={el.id}>{el.nombre}</option>)}
+                  {/* El enlace viejo a un compartido se sigue mostrando: si se cayera de la
+                      lista, el desplegable saldría en blanco y no habría cómo desenlazarlo. */}
+                  {elEnlazado && !elsObra.some(e => e.id === elEnlazado.id) &&
+                    <option value={elEnlazado.id}>⚠ {elEnlazado.nombre} (compartido)</option>}
                 </select>
                 <Btn size="sm" variant="danger" onClick={() => quitarParte(i)}>✕</Btn>
               </div>
