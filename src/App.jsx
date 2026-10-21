@@ -71,7 +71,10 @@ const MODULES = [
       { key: 'pedidos',      label: 'Pedidos',         icon: '📦', roles: [...TODOS_MENOS_FACT, 'produccion', 'almacen'] },
       { key: 'produccion',   label: 'Producción',      icon: '🔨', roles: [...TODOS_MENOS_FACT, 'produccion', 'almacen'] },
       { key: 'despachos',    label: 'Despachos',       icon: '🚚', roles: [...TODOS_MENOS_FACT, 'produccion', 'almacen'] },
-      { key: 'instalacion',  label: 'Instalación',     icon: '🔧', roles: TODOS_MENOS_FACT },
+      // Producción y almacén entran a ver el avance por apartamento: necesitan saber qué
+      // lleva puesto cada apto para programar y despachar. Entran en SOLO_LECTURA y sin
+      // ver lo que se le paga al instalador (ver SIN_PAGOS_INSTALADOR).
+      { key: 'instalacion',  label: 'Instalación',     icon: '🔧', roles: [...TODOS_MENOS_FACT, 'produccion', 'almacen'] },
       { key: 'adicionales',  label: 'Adicionales',     icon: '➕', roles: TODOS_MENOS_FACT },
     ],
   },
@@ -93,11 +96,15 @@ const MODULES = [
 const SIN_VALORES_COMPRA = ['produccion']
 // Roles que NO ven el valor de los contratos con la constructora
 const SIN_VALOR_CONTRATO = ['produccion', 'almacen']
+// Roles que NO ven lo que se le paga al instalador. Es distinto del valor del contrato:
+// el contrato es lo que se le cobra a la constructora, esto es lo que se le paga a la
+// gente. En la lista de ítems de Instalación los dos salían juntos y sin separar.
+const SIN_PAGOS_INSTALADOR = ['produccion', 'almacen']
 
 // Módulos que el rol puede VER pero no modificar
 const SOLO_LECTURA = {
-  produccion: ['pedidos'],
-  almacen:    ['produccion', 'despachos'],
+  produccion: ['pedidos', 'instalacion'],
+  almacen:    ['produccion', 'despachos', 'instalacion'],
 }
 
 const modulosDe = rol => MODULES.flatMap(sec => sec.items).filter(it => it.roles.includes(rol)).map(it => it.key)
@@ -513,6 +520,7 @@ export default function App() {
     ROLES, nav, irA, puedeIr, puedeEditar,
     verValoresCompra:  !SIN_VALORES_COMPRA.includes(user.rol),
     verValorContrato:  !SIN_VALOR_CONTRATO.includes(user.rol),
+    verPagosInstalador: !SIN_PAGOS_INSTALADOR.includes(user.rol),
   }
 
   const pages = {

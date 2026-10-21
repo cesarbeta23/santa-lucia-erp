@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase.js'
 
 const TIPOS_INST = ['instalacion', 'todo_costo']
 
-export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeEditar, verValorContrato = true, user }) {
+export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeEditar, verValorContrato = true, verPagosInstalador = true, user }) {
   const {
     proyectos = [], contratos = [], items_contrato = [], constructoras = [],
     actas_facturacion = [], items_acta_facturacion = [],
@@ -1015,8 +1015,12 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                         <span style={{ color: '#1D4ED8' }}>{it.ref}</span> · {it.descripcion}
                       </div>
                       <div style={{ fontSize: 12, color: ps.length ? C.g5 : C.or, marginTop: 3 }}>
+                        {/* Lo que se le paga al instalador solo lo ve quien tiene por qué:
+                            producción y almacén ven el avance, no la mano de obra. */}
                         {ps.length
-                          ? `${ps.length} parte(s) · ${enObra} en la obra · paga ${fmt(totInst)} instalación + ${fmt(totDet)} detallado`
+                          ? (verPagosInstalador
+                              ? `${ps.length} parte(s) · ${enObra} en la obra · paga ${fmt(totInst)} instalación + ${fmt(totDet)} detallado`
+                              : `${ps.length} parte(s) · ${enObra} en la obra`)
                           : 'Sin desglosar'}
                       </div>
                     </div>
@@ -1030,7 +1034,8 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       {ps.map(p => (
                         <span key={p.id} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 999, background: p.elemento_id ? '#DCFCE7' : C.g1, color: p.elemento_id ? C.gnD : C.g5, border: `1px solid ${p.elemento_id ? '#BBF7D0' : C.g2}` }}>
-                          {p.elemento_id ? '✓ ' : ''}{p.nombre} · {fmt(p.valor_instalador)}{Number(p.valor_detallado) ? ` + ${fmt(p.valor_detallado)}` : ''}
+                          {p.elemento_id ? '✓ ' : ''}{p.nombre}
+                          {verPagosInstalador && <> · {fmt(p.valor_instalador)}{Number(p.valor_detallado) ? ` + ${fmt(p.valor_detallado)}` : ''}</>}
                         </span>
                       ))}
                     </div>
