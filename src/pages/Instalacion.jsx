@@ -932,13 +932,13 @@ export default function Instalacion({ dbData, setDbData, toast, nav, irA, puedeE
                             {total === 0 ? <span style={{ color: C.g3 }}>—</span> : (
                               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                 <input type="checkbox" checked={entregado}
-                                  disabled={!editable || (!listo && !entregado)}
+                                  disabled={!editable}
                                   onChange={e => guardarEntrega(it, a, { entregado: e.target.checked })}
-                                  style={{ cursor: editable && (listo || entregado) ? 'pointer' : 'not-allowed' }} />
+                                  style={{ cursor: editable ? 'pointer' : 'not-allowed' }} />
                                 <input key={ent?.memorando || ''} defaultValue={ent?.memorando || ''} placeholder="Memo"
                                   disabled={!editable}
                                   onBlur={e => { const v = e.target.value.trim(); if (v !== (ent?.memorando || '')) guardarEntrega(it, a, { memorando: v || null }) }}
-                                  style={{ width: 74, padding: '3px 6px', border: `1px solid ${entregado ? '#FDBA74' : C.g2}`, borderRadius: 5, fontSize: 11, background: entregado ? '#FFF7ED' : 'white' }} />
+                                  style={{ width: 140, padding: '3px 6px', border: `1px solid ${entregado ? '#FDBA74' : C.g2}`, borderRadius: 5, fontSize: 11, background: entregado ? '#FFF7ED' : 'white' }} />
                               </div>
                             )}
                           </td>,
